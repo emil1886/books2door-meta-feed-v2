@@ -2,7 +2,7 @@ name: Build Books2Door Meta feed v2
 
 on:
   schedule:
-    - cron: '0 6 * * *'      # daily 06:00 UTC, after DataFeedWatch refreshes
+    - cron: '0 * * * *'      # hourly; DataFeedWatch refreshes several times a day
   workflow_dispatch:
 
 permissions:
@@ -26,12 +26,22 @@ jobs:
       - name: Build feed from DataFeedWatch source
         run: python build_feed.py --out-dir docs --min-products 3500
 
-      - name: Commit refreshed feed
+      # Pages serves the artifact built above, so the commit is only a history
+      # snapshot. At ~1.3 MB compressed per commit, doing it hourly would add
+      # ~11 GB a year, so keep it to once a day.
+      - name: Commit refreshed feed (daily history snapshot)
         run: |
+          hour=$(date -u +%H)
+          if [ "$hour" != "06" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "hourly run at ${hour}:00 UTC - rebuilding and deploying only, no commit"
+            exit 0
+          fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs
-          git diff --staged --quiet || git commit -m "Refresh Books2Door Meta feed v2 ($(date -u +%Y-%m-%d))"
+          git diff --staged --quiet && { echo "no change to commit"; exit 0; }
+          git commit -m "Refresh Books2Door Meta feed v2 ($(date -u +%Y-%m-%d))"
+          git pull --rebase --strategy-option=ours origin main
           git push
 
       - uses: actions/upload-pages-artifact@v3

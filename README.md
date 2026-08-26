@@ -47,4 +47,9 @@ excises it rather than peeling segments off the end.
 
 `--min-products 3500` aborts the build rather than publishing a truncated feed.
 
-The GitHub Action rebuilds daily at 06:00 UTC and deploys `docs/` to Pages.
+The GitHub Action rebuilds **hourly** and deploys `docs/` to Pages. DataFeedWatch
+refreshes several times a day, so hourly keeps pricing and stock close to source.
+
+Only the 06:00 UTC run commits the rebuilt feed to `main`. Pages serves the
+artifact built during the run, so the commit is purely a history snapshot - at
+~1.3 MB compressed per commit, doing it hourly would add ~11 GB a year.
