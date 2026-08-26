@@ -31,6 +31,48 @@ SET_RE = re.compile(
     r"(?:\b\d{1,3}\s+)?(?:picture\s+|illustrated\s+|story\s+)?\bbooks?\s+"
     r"(?:collection\s+)?(?:box\s+)?(?:set|collection)\b"
     r"|\bbox\s+set\b|\bcollection\s+set\b|\b\d{1,3}\s+picture\s+books\b", re.I)
+_MOD = r"(?:illustrated\s+|picture\s+|story\s+|storybook\s+)?"
+_SETWORD = r"(?:(?:collection\s+)?(?:box\s+)?(?:set|collection))"
+# With a set word ('4 Books Collection Set') the phrase is unambiguous wherever it
+# sits. A bare count ('5 Books') is only a pack when the end or punctuation follows
+# - that keeps 'CoComelon 24 Book Countdown' and '4 Books & Backpack Bundle' intact.
+PACK_SET_RE = re.compile(
+    r"\b" + _MOD + r"(\d{1,3})\s+" + _MOD + r"books?\s+" + _SETWORD + r"\b", re.I)
+PACK_BARE_RE = re.compile(
+    r"\b" + _MOD + r"(\d{1,3})\s+" + _MOD + r"books?\b"
+    r"(?=\s*(?:$|[,:;(]|[-\u2013]\s))", re.I)
+
+
+def _pack_match(text):
+    return PACK_SET_RE.search(text or "") or PACK_BARE_RE.search(text or "")
+
+
+def parse_pack(title):
+    """-> (count:int|0, label:str). Label is the full descriptor where one is
+    stated ('4 Books Collection Set'), else the bare count ('5 Books')."""
+    t = re.sub(r"\s+", " ", (title or "")).strip()
+    m = _pack_match(t)
+    if not m:
+        return 0, ""
+    count = int(m.group(1))
+    if count < 2 or count > 60:          # 1-book and absurd counts are not packs
+        return 0, ""
+    desc = re.sub(r"\s+", " ", m.group(0)).strip(" ,:;-\u2013")
+    desc = " ".join(w if w[:1].isupper() else w.capitalize() for w in desc.split())
+    return count, desc
+
+
+def strip_pack(title):
+    """Remove the pack phrase from a title, tidying the punctuation it leaves."""
+    m = _pack_match(title or "")
+    if not m:
+        return (title or "").strip()
+    out = (title[:m.start()] + " " + title[m.end():])
+    out = re.sub(r"\s{2,}", " ", out)
+    out = re.sub(r"\s+([,:;])", r"\1", out)
+    out = re.sub(r"\(\s*\)", "", out)
+    return out.strip(" ,:;-\u2013")
+
 
 def _canon_format(s):
     return FORMAT_CANON.get(s.strip().lower(), s.strip())
@@ -152,5 +194,7 @@ def parse_title(title):
         if am2:
             age = _norm_age(am2.group(0))
 
+    pack_count, pack = parse_pack(name)
+
     return {"name": name, "author": author, "format": fmt, "age": age,
-            "genre": genre, "set": setinfo}
+            "genre": genre, "set": setinfo, "pack": pack, "pack_count": pack_count}

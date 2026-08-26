@@ -7,14 +7,16 @@ relocates author / format / age / genre into custom labels + product_type.
 """
 import argparse, csv, io, os, re, sys, urllib.request
 import xml.etree.ElementTree as ET
-from parse_titles import parse_title
+from parse_titles import parse_title, strip_pack
 
 SOURCE_URL = "https://feeds.datafeedwatch.com/30774/918ec7a878786cddcf24f735d6cd42d80a7ff7fe.xml"
 G = "http://base.google.com/ns/1.0"
 ET.register_namespace("g", G)
 
-# Where each extracted detail lands.
-LABEL_AUTHOR, LABEL_FORMAT, LABEL_AGE = "custom_label_0", "custom_label_1", "custom_label_4"
+# Where each extracted detail lands. Genre and format get no label: Emil ruled
+# both unimportant for this feed (2026-08-26). Format survives only as a
+# trailing product_type crumb, because 30 items are otherwise indistinguishable.
+LABEL_AUTHOR, LABEL_AGE, LABEL_SET = "custom_label_0", "custom_label_1", "custom_label_4"
 # custom_label_2 / custom_label_3 are Books2Door promo tags - preserved untouched.
 
 
@@ -40,8 +42,10 @@ def gset(item, tag, value):
 
 
 def build_product_type(original, genre, age, fmt, keep_format_crumb):
+    """Original DFW crumb, then format purely to disambiguate same-title editions.
+    Genre is deliberately dropped; age now has its own label."""
     crumbs, seen = [], set()
-    for c in [original, genre, age, (fmt if keep_format_crumb else "")]:
+    for c in [original, (fmt if keep_format_crumb else "")]:
         c = (c or "").strip()
         if not c:
             continue
@@ -60,9 +64,9 @@ def main():
     ap.add_argument("--out-dir", default="docs")
     ap.add_argument("--basename", default="books2door_meta_feed_v2")
     ap.add_argument("--min-products", type=int, default=3500)
-    ap.add_argument("--keep-set-in-title", action="store_true", default=True,
-                    help="keep '3 Books Collection Set' in the title (it is part of the product)")
-    ap.add_argument("--strip-set-from-title", dest="keep_set_in_title", action="store_false")
+    ap.add_argument("--keep-set-in-title", action="store_true", default=False,
+                    help="keep '3 Books Collection Set' in the title; off by default "
+                         "because it now has its own label (custom_label_4)")
     ap.add_argument("--format-in-product-type", action="store_true", default=True)
     ap.add_argument("--review-csv", default="")
     args = ap.parse_args()
@@ -76,15 +80,14 @@ def main():
     if len(items) < args.min_products:
         sys.exit(f"ERROR: only {len(items)} items (min {args.min_products}) - refusing to publish")
 
-    review, stats = [], {"author": 0, "format": 0, "age": 0, "genre": 0, "changed": 0}
+    review, stats = [], {"author": 0, "format": 0, "age": 0, "genre": 0, "set": 0, "changed": 0}
     for item in items:
         orig_title = gtext(item, "title")
         p = parse_title(orig_title)
 
         new_title = p["name"]
-        if not args.keep_set_in_title and p["set"]:
-            stripped = re.sub(re.escape(p["set"]), "", new_title, flags=re.I)
-            stripped = re.sub(r"\s{2,}", " ", stripped).strip(" ,:-")
+        if not args.keep_set_in_title and p["pack"]:
+            stripped = strip_pack(new_title)
             if len(stripped) >= 8:
                 new_title = stripped
         if not new_title:
@@ -93,10 +96,12 @@ def main():
         gset(item, "title", new_title)
         if p["author"]:
             gset(item, LABEL_AUTHOR, p["author"]); stats["author"] += 1
-        if p["format"]:
-            gset(item, LABEL_FORMAT, p["format"]); stats["format"] += 1
         if p["age"]:
             gset(item, LABEL_AGE, p["age"]); stats["age"] += 1
+        if p["pack"]:
+            gset(item, LABEL_SET, p["pack"]); stats["set"] += 1
+        if p["format"]:
+            stats["format"] += 1
         if p["genre"]:
             stats["genre"] += 1
 
@@ -109,7 +114,8 @@ def main():
 
         review.append({"id": gtext(item, "id"), "old_title": orig_title, "new_title": new_title,
                        "author": p["author"], "format": p["format"], "age": p["age"],
-                       "genre": p["genre"], "set": p["set"], "product_type": pt})
+                       "genre": p["genre"], "set": p["pack"],
+                       "pack_count": p["pack_count"], "product_type": pt})
 
     os.makedirs(args.out_dir, exist_ok=True)
     xml_path = os.path.join(args.out_dir, args.basename + ".xml")
@@ -135,7 +141,7 @@ def main():
     n = len(items)
     print(f"items            : {n}")
     print(f"titles rewritten : {stats['changed']} ({stats['changed']*100//n}%)")
-    for k in ("author", "format", "age", "genre"):
+    for k in ("author", "age", "set", "format", "genre"):
         print(f"{k:17s}: {stats[k]} ({stats[k]*100//n}%)")
     print(f"wrote {xml_path}")
     print(f"wrote {csv_path}")
