@@ -157,6 +157,12 @@ def parse_title(title):
         sm = SET_RE.search(tail)
         if sm:
             cut = min(cut, sm.start())
+        # an author name never runs into pack or collection wording
+        for pat in (r"\b\d{1,3}\s+books?\b", r"\bcomplete\s+collection\b",
+                    r"\bcollection\b", r"\bbox\s+set\b", r"\billustrated\b"):
+            em = re.search(pat, tail, re.I)
+            if em:
+                cut = min(cut, em.start())
         cand = tail[:cut].strip(" ,:-")
         # authors are short and word-like, not sentences
         if cand and len(cand) <= 60 and cand.count(" ") <= 7:
