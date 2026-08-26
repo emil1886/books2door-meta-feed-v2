@@ -35,12 +35,16 @@ Example:
             custom_label_4=3 Books Collection Set
             product_type=Fiction > Paperback
 
+No title may mention an age, Paperback, Hardback or a binding: those are stripped
+wherever they appear, not just at the end. Source titles are wildly inconsistent
+('Ages 0-5- Paperback', 'Backpack- Ages 1-7', 'Paperback (With A Free Audiobook)',
+'Fiction/Non Fiction'), so the parser finds each detail wherever it sits and
+excises it rather than peeling segments off the end.
+
 ## Run it
 
     python build_feed.py --out-dir docs --review-csv review_titles.csv
 
-`--keep-set-in-title` leaves "3 Books Collection Set" in the name; by default it
-is stripped, because it now has its own label.
 `--min-products 3500` aborts the build rather than publishing a truncated feed.
 
 The GitHub Action rebuilds daily at 06:00 UTC and deploys `docs/` to Pages.

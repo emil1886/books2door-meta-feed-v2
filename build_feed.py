@@ -7,7 +7,7 @@ relocates author / format / age / genre into custom labels + product_type.
 """
 import argparse, csv, io, os, re, sys, urllib.request
 import xml.etree.ElementTree as ET
-from parse_titles import parse_title, strip_pack
+from parse_titles import parse_title
 
 SOURCE_URL = "https://feeds.datafeedwatch.com/30774/918ec7a878786cddcf24f735d6cd42d80a7ff7fe.xml"
 G = "http://base.google.com/ns/1.0"
@@ -64,9 +64,6 @@ def main():
     ap.add_argument("--out-dir", default="docs")
     ap.add_argument("--basename", default="books2door_meta_feed_v2")
     ap.add_argument("--min-products", type=int, default=3500)
-    ap.add_argument("--keep-set-in-title", action="store_true", default=False,
-                    help="keep '3 Books Collection Set' in the title; off by default "
-                         "because it now has its own label (custom_label_4)")
     ap.add_argument("--format-in-product-type", action="store_true", default=True)
     ap.add_argument("--review-csv", default="")
     args = ap.parse_args()
@@ -85,11 +82,7 @@ def main():
         orig_title = gtext(item, "title")
         p = parse_title(orig_title)
 
-        new_title = p["name"]
-        if not args.keep_set_in_title and p["pack"]:
-            stripped = strip_pack(new_title)
-            if len(stripped) >= 8:
-                new_title = stripped
+        new_title = p["name"]        # parse_title has already removed the pack phrase
         if not new_title:
             new_title = orig_title           # never ship an empty title
 
