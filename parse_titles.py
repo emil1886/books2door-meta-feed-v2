@@ -190,9 +190,13 @@ def parse_title(title):
     author = ""
     # require something before 'by', so a title that opens with it keeps its name
     # ('By Ash, Oak and Thorn Series By Melissa Harrison' -> author is Melissa Harrison)
-    am = re.search(r"(?<=\S)\s+by\s+(.+)$", name, re.I)
-    if am:
-        tail, cut = am.group(1), len(am.group(1))
+    # ...and take the LAST 'by', so 'Fifty Shades as Told by Christian Trilogy by
+    # E L James' credits E L James rather than the whole phrase after the first one.
+    seps = list(re.finditer(r"(?<=\S)\s+by\s+", name, re.I))
+    if seps:
+        am = seps[-1]
+        tail = name[am.end():]
+        cut = len(tail)
         cm = re.search(r"[:(]", tail)
         if cm:
             cut = min(cut, cm.start())
@@ -203,8 +207,7 @@ def parse_title(title):
         cand = tail[:cut].strip(" ,:-")
         if cand and len(cand) <= 60 and cand.count(" ") <= 7:
             author = cand
-            name = _heal(re.sub(r"\s*\bby\s+" + re.escape(author) + r"\b", " ",
-                                name, count=1, flags=re.I))
+            name = _heal(name[:am.start()] + " " + tail[cut:])
 
     bn = BOOKNUM_RE.search(t)
     setinfo = " ".join(filter(None, [bn.group(0).strip() if bn else "", pack]))
