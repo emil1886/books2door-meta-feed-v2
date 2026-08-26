@@ -2,7 +2,7 @@ name: Build Books2Door Meta feed v2
 
 on:
   schedule:
-    - cron: '0 * * * *'      # hourly; DataFeedWatch refreshes several times a day
+    - cron: '0 6 * * *'      # daily 06:00 UTC, after DataFeedWatch refreshes
   workflow_dispatch:
 
 permissions:
@@ -26,16 +26,12 @@ jobs:
       - name: Build feed from DataFeedWatch source
         run: python build_feed.py --out-dir docs --min-products 3500
 
-      # Pages serves the artifact built above, so the commit is only a history
-      # snapshot. At ~1.3 MB compressed per commit, doing it hourly would add
-      # ~11 GB a year, so keep it to once a day.
-      - name: Commit refreshed feed (daily history snapshot)
+      # Pages serves the artifact built above; this commit is a history snapshot.
+      # It costs ~1.3 MB compressed per run, which is fine once a day. If the
+      # schedule ever goes sub-daily, make this conditional again - hourly would
+      # add roughly 11 GB a year.
+      - name: Commit refreshed feed
         run: |
-          hour=$(date -u +%H)
-          if [ "$hour" != "06" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            echo "hourly run at ${hour}:00 UTC - rebuilding and deploying only, no commit"
-            exit 0
-          fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs
