@@ -41,6 +41,20 @@ def gset(item, tag, value):
     el.text = value
 
 
+def gclear(item, tag):
+    """Drop a field entirely.
+
+    DataFeedWatch began populating custom_label_0 (site category) and
+    custom_label_4 (price bucket / SKU range) after this feed was built. Those
+    are the slots we use for author and set, so a leftover source value would
+    leave the label meaning two different things depending on the row. Each
+    label has to carry exactly one meaning, so where we have no value the
+    source's is removed rather than left in place.
+    """
+    for el in item.findall(f"{{{G}}}{tag}"):
+        item.remove(el)
+
+
 # Binding collapses to three materials. Anything that is not a book binding
 # (Educational Toy, Yoga Cards) gets no material at all rather than a wrong one.
 MATERIAL = {
@@ -112,12 +126,13 @@ def main():
             new_title = orig_title           # never ship an empty title
 
         gset(item, "title", new_title)
-        if p["author"]:
-            gset(item, LABEL_AUTHOR, p["author"]); stats["author"] += 1
-        if p["age"]:
-            gset(item, LABEL_AGE, p["age"]); stats["age"] += 1
-        if p["pack"]:
-            gset(item, LABEL_SET, p["pack"]); stats["set"] += 1
+        for label, value, key in ((LABEL_AUTHOR, p["author"], "author"),
+                                  (LABEL_AGE, p["age"], "age"),
+                                  (LABEL_SET, p["pack"], "set")):
+            if value:
+                gset(item, label, value); stats[key] += 1
+            else:
+                gclear(item, label)
         material = build_material(p["format"])
         if material:
             gset(item, "material", material); stats["material"] += 1

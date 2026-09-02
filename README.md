@@ -34,6 +34,14 @@ Genre (Fiction / Non-Fiction) is deliberately dropped - it was judged
 unimportant for this feed, and 1,760 of the 1,861 genre-tagged items already
 stated it in their product_type crumb anyway.
 
+**Each label carries exactly one meaning.** On 2026-09-02 DataFeedWatch began
+populating `custom_label_0` with the site category and `custom_label_4` with a
+price bucket / SKU range - the two slots this feed uses for author and set. A
+leftover source value would make the label mean different things on different
+rows, so where we have no value of our own the field is removed rather than left
+in place. If DataFeedWatch's price buckets are ever wanted, they need a slot of
+their own - all five labels are otherwise spoken for.
+
 `custom_label_2` / `custom_label_3` are Books2Door promo tags and are passed
 through untouched. `id`, `price`, `sale_price`, `link`, `gtin`, `item_group_id`
 and all images are copied verbatim - this feed never invents commercial data.
