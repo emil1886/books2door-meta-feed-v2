@@ -3,7 +3,8 @@
 
 Source of truth: the existing DataFeedWatch Meta feed (read-only).
 This script re-titles each item so g:title is the product name alone, and
-relocates author / age / set into custom labels and binding into g:material.
+puts author and age into custom labels, binding into g:material and pack
+quantity into g:size.
 """
 import argparse, csv, io, os, re, sys, urllib.request
 import xml.etree.ElementTree as ET
@@ -16,8 +17,10 @@ ET.register_namespace("g", G)
 # Where each extracted detail lands. Genre is dropped entirely. Binding is no
 # longer a product_type crumb - it moved to g:material, collapsed to three values
 # (2026-09-02), which leaves g:product_type identical to the DataFeedWatch value.
-LABEL_AUTHOR, LABEL_AGE, LABEL_SET = "custom_label_0", "custom_label_1", "custom_label_4"
-# custom_label_2 / custom_label_3 are Books2Door promo tags - preserved untouched.
+LABEL_AUTHOR, LABEL_AGE = "custom_label_0", "custom_label_1"
+# Pack quantity moved to g:size on 2026-09-02, which frees custom_label_4.
+# custom_label_2 / custom_label_3 are Books2Door promo tags, and custom_label_4
+# is now DataFeedWatch's own again - all three pass through untouched.
 
 
 def fetch(src):
@@ -44,12 +47,11 @@ def gset(item, tag, value):
 def gclear(item, tag):
     """Drop a field entirely.
 
-    DataFeedWatch began populating custom_label_0 (site category) and
-    custom_label_4 (price bucket / SKU range) after this feed was built. Those
-    are the slots we use for author and set, so a leftover source value would
-    leave the label meaning two different things depending on the row. Each
-    label has to carry exactly one meaning, so where we have no value the
-    source's is removed rather than left in place.
+    DataFeedWatch began populating custom_label_0 with the site category after
+    this feed was built, and that is the slot we use for the author. A leftover
+    source value would leave the label meaning two different things depending on
+    the row, so where we have no value of our own the source's is removed rather
+    than left in place. The same applies to g:size, which we own outright.
     """
     for el in item.findall(f"{{{G}}}{tag}"):
         item.remove(el)
@@ -127,12 +129,18 @@ def main():
 
         gset(item, "title", new_title)
         for label, value, key in ((LABEL_AUTHOR, p["author"], "author"),
-                                  (LABEL_AGE, p["age"], "age"),
-                                  (LABEL_SET, p["pack"], "set")):
+                                  (LABEL_AGE, p["age"], "age")):
             if value:
                 gset(item, label, value); stats[key] += 1
             else:
                 gclear(item, label)
+
+        # How many books are in the pack. Every pack phrase we recognise states
+        # 'book(s)', so the unit is always accurate.
+        if p["pack_count"]:
+            gset(item, "size", f'{p["pack_count"]} Books'); stats["set"] += 1
+        else:
+            gclear(item, "size")
         material = build_material(p["format"])
         if material:
             gset(item, "material", material); stats["material"] += 1
@@ -159,7 +167,7 @@ def main():
 
     csv_cols = ["id", "title", "description", "link", "image_link", "additional_image_link",
                 "price", "sale_price", "availability", "brand", "gtin", "item_group_id",
-                "condition", "material", "product_type", "google_product_category",
+                "condition", "material", "size", "product_type", "google_product_category",
                 "custom_label_0", "custom_label_1", "custom_label_2", "custom_label_3",
                 "custom_label_4"]
     csv_path = os.path.join(args.out_dir, args.basename + ".csv")

@@ -14,33 +14,38 @@ moves to structured fields:
 |-----------------|---------------------|
 | Author          | `custom_label_0`    |
 | Age             | `custom_label_1`    |
-| Set / no. books | `custom_label_4`    |
 | Binding         | `g:material`        |
+| Pack quantity   | `g:size`            |
 
 `g:material` carries exactly three values - **Paperback**, **Hardback**,
 **Board Book** - collapsed from the 15 binding spellings the source uses
 (Sprayed Edges Hardback, Leather Bound, Flexibound, Hardcover and so on, plus
 two misspellings, `Hardabck` and `Hardaback`). A mixed binding takes the first
-listed, so `Paperback/Hardback` reads as Paperback. Anything that is not a book
-- Educational Toys, Yoga Cards - gets no material rather than a wrong one.
+listed. Anything that is not a book gets no material rather than a wrong one.
 
-Because binding moved out, **`g:product_type` is now byte-identical to the
-DataFeedWatch value** (`Fiction`, `9-14`, `B2D DEALS`, ...). Note that crumb is
-not a single taxonomy: it mixes genre, age band and merchandising bucket, so a
-product is filed under one of the three, never consistently. Use
-`custom_label_1` for age-based product sets rather than product_type.
+`g:size` carries the pack quantity as `3 Books`, `4 Books` and so on, on 2,849
+products. Every pack phrase the parser recognises states "book(s)", so the unit
+is always accurate. Singles simply have no size.
+
+Because binding moved out, **`g:product_type` is byte-identical to the
+DataFeedWatch value** (`Fiction`, `9-14`, `B2D DEALS`, ...). That crumb is not a
+single taxonomy: it mixes genre, age band and merchandising bucket, so a product
+is filed under one of the three, never consistently. Use `custom_label_1` for
+age-based product sets rather than product_type. The `>` hierarchy in
+product_type is free if sub-categories are ever wanted.
 
 Genre (Fiction / Non-Fiction) is deliberately dropped - it was judged
 unimportant for this feed, and 1,760 of the 1,861 genre-tagged items already
 stated it in their product_type crumb anyway.
 
-**Each label carries exactly one meaning.** On 2026-09-02 DataFeedWatch began
-populating `custom_label_0` with the site category and `custom_label_4` with a
-price bucket / SKU range - the two slots this feed uses for author and set. A
-leftover source value would make the label mean different things on different
-rows, so where we have no value of our own the field is removed rather than left
-in place. If DataFeedWatch's price buckets are ever wanted, they need a slot of
-their own - all five labels are otherwise spoken for.
+**Each field carries exactly one meaning.** On 2026-09-02 DataFeedWatch began
+populating `custom_label_0` with the site category - the slot this feed uses for
+the author. A leftover source value would make the label mean different things on
+different rows, so where we have no value of our own the field is removed.
+
+With pack quantity moved to `g:size`, `custom_label_4` is DataFeedWatch's again
+and passes straight through. Note its content is 97% unique per product (SKU
+ranges like `B2D8088-B2D8084`), so it is not usable for product sets.
 
 `custom_label_2` / `custom_label_3` are Books2Door promo tags and are passed
 through untouched. `id`, `price`, `sale_price`, `link`, `gtin`, `item_group_id`
@@ -51,8 +56,7 @@ Example:
     before  Alex Rider (Book 12-14) by Anthony Horowitz: 3 Books Collection Set - Ages 9-12 - Paperback
     after   Alex Rider (Book 12-14)
             custom_label_0=Anthony Horowitz  custom_label_1=Ages 9-12
-            custom_label_4=3 Books Collection Set
-            material=Paperback   product_type=Fiction
+            material=Paperback   size=3 Books   product_type=Fiction
 
 No title may mention an age, Paperback, Hardback or a binding: those are stripped
 wherever they appear, not just at the end. Source titles are wildly inconsistent
