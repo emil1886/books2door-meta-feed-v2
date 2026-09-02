@@ -3,7 +3,7 @@
 
 Source of truth: the existing DataFeedWatch Meta feed (read-only).
 This script re-titles each item so g:title is the product name alone, and
-relocates author / format / age / genre into custom labels + product_type.
+relocates author / age / set into custom labels and binding into g:material.
 """
 import argparse, csv, io, os, re, sys, urllib.request
 import xml.etree.ElementTree as ET
@@ -13,9 +13,9 @@ SOURCE_URL = "https://feeds.datafeedwatch.com/30774/918ec7a878786cddcf24f735d6cd
 G = "http://base.google.com/ns/1.0"
 ET.register_namespace("g", G)
 
-# Where each extracted detail lands. Genre and format get no label: Emil ruled
-# both unimportant for this feed (2026-08-26). Format survives only as a
-# trailing product_type crumb, because 30 items are otherwise indistinguishable.
+# Where each extracted detail lands. Genre is dropped entirely. Binding is no
+# longer a product_type crumb - it moved to g:material, collapsed to three values
+# (2026-09-02), which leaves g:product_type identical to the DataFeedWatch value.
 LABEL_AUTHOR, LABEL_AGE, LABEL_SET = "custom_label_0", "custom_label_1", "custom_label_4"
 # custom_label_2 / custom_label_3 are Books2Door promo tags - preserved untouched.
 
@@ -41,11 +41,37 @@ def gset(item, tag, value):
     el.text = value
 
 
+# Binding collapses to three materials. Anything that is not a book binding
+# (Educational Toy, Yoga Cards) gets no material at all rather than a wrong one.
+MATERIAL = {
+    "paperback": "Paperback", "flexibound": "Paperback",
+    "hardback": "Hardback", "hardcover": "Hardback",
+    "sprayed edges hardback": "Hardback", "sprayed edge hardback": "Hardback",
+    "leather bound hardback": "Hardback", "leather bound": "Hardback",
+    "leather bound/hardback": "Hardback",
+    "board book": "Board Book", "board books": "Board Book",
+    "sprayed edges board book": "Board Book",
+}
+
+
+def build_material(fmt):
+    """Map a binding to one of Paperback / Hardback / Board Book, or '' if it is
+    not a book. A mixed binding takes the first one listed, so 'Paperback/Hardback'
+    reads as Paperback and 'Board Book/Paperback' as Board Book."""
+    f = (fmt or "").strip().lower()
+    if not f:
+        return ""
+    if f in MATERIAL:
+        return MATERIAL[f]
+    first = re.split(r"\s*/\s*", f)[0].strip()
+    return MATERIAL.get(first, "")
+
+
 def build_product_type(original, genre, age, fmt, keep_format_crumb):
-    """Original DFW crumb, then format purely to disambiguate same-title editions.
-    Genre is deliberately dropped; age now has its own label."""
+    """The original DataFeedWatch crumb, unchanged. Binding now lives in
+    g:material, and genre and age have their own fields."""
     crumbs, seen = [], set()
-    for c in [original, (fmt if keep_format_crumb else "")]:
+    for c in [original]:
         c = (c or "").strip()
         if not c:
             continue
@@ -64,7 +90,6 @@ def main():
     ap.add_argument("--out-dir", default="docs")
     ap.add_argument("--basename", default="books2door_meta_feed_v2")
     ap.add_argument("--min-products", type=int, default=3500)
-    ap.add_argument("--format-in-product-type", action="store_true", default=True)
     ap.add_argument("--review-csv", default="")
     args = ap.parse_args()
 
@@ -77,7 +102,7 @@ def main():
     if len(items) < args.min_products:
         sys.exit(f"ERROR: only {len(items)} items (min {args.min_products}) - refusing to publish")
 
-    review, stats = [], {"author": 0, "format": 0, "age": 0, "genre": 0, "set": 0, "changed": 0}
+    review, stats = [], {"author": 0, "format": 0, "age": 0, "genre": 0, "set": 0, "material": 0, "changed": 0}
     for item in items:
         orig_title = gtext(item, "title")
         p = parse_title(orig_title)
@@ -93,13 +118,16 @@ def main():
             gset(item, LABEL_AGE, p["age"]); stats["age"] += 1
         if p["pack"]:
             gset(item, LABEL_SET, p["pack"]); stats["set"] += 1
+        material = build_material(p["format"])
+        if material:
+            gset(item, "material", material); stats["material"] += 1
         if p["format"]:
             stats["format"] += 1
         if p["genre"]:
             stats["genre"] += 1
 
         pt = build_product_type(gtext(item, "product_type"), p["genre"], p["age"],
-                                p["format"], args.format_in_product_type)
+                                p["format"], False)
         if pt:
             gset(item, "product_type", pt)
         if new_title != orig_title:
@@ -107,7 +135,7 @@ def main():
 
         review.append({"id": gtext(item, "id"), "old_title": orig_title, "new_title": new_title,
                        "author": p["author"], "format": p["format"], "age": p["age"],
-                       "genre": p["genre"], "set": p["pack"],
+                       "genre": p["genre"], "material": material, "set": p["pack"],
                        "pack_count": p["pack_count"], "product_type": pt})
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -116,7 +144,7 @@ def main():
 
     csv_cols = ["id", "title", "description", "link", "image_link", "additional_image_link",
                 "price", "sale_price", "availability", "brand", "gtin", "item_group_id",
-                "condition", "product_type", "google_product_category",
+                "condition", "material", "product_type", "google_product_category",
                 "custom_label_0", "custom_label_1", "custom_label_2", "custom_label_3",
                 "custom_label_4"]
     csv_path = os.path.join(args.out_dir, args.basename + ".csv")
@@ -134,7 +162,7 @@ def main():
     n = len(items)
     print(f"items            : {n}")
     print(f"titles rewritten : {stats['changed']} ({stats['changed']*100//n}%)")
-    for k in ("author", "age", "set", "format", "genre"):
+    for k in ("author", "age", "set", "material", "format", "genre"):
         print(f"{k:17s}: {stats[k]} ({stats[k]*100//n}%)")
     print(f"wrote {xml_path}")
     print(f"wrote {csv_path}")

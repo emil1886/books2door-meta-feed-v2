@@ -15,13 +15,24 @@ moves to structured fields:
 | Author          | `custom_label_0`    |
 | Age             | `custom_label_1`    |
 | Set / no. books | `custom_label_4`    |
-| Format          | `product_type` tail |
+| Binding         | `g:material`        |
 
-Genre (Fiction / Non-Fiction) is deliberately dropped - it was judged unimportant
-for this feed, and 1,760 of the 1,861 genre-tagged items already stated it in
-their original DataFeedWatch `product_type` crumb anyway. Format keeps no label
-for the same reason, but survives as the last `product_type` crumb because 30
-items are otherwise indistinguishable (same title, different binding).
+`g:material` carries exactly three values - **Paperback**, **Hardback**,
+**Board Book** - collapsed from the 15 binding spellings the source uses
+(Sprayed Edges Hardback, Leather Bound, Flexibound, Hardcover and so on, plus
+two misspellings, `Hardabck` and `Hardaback`). A mixed binding takes the first
+listed, so `Paperback/Hardback` reads as Paperback. Anything that is not a book
+- Educational Toys, Yoga Cards - gets no material rather than a wrong one.
+
+Because binding moved out, **`g:product_type` is now byte-identical to the
+DataFeedWatch value** (`Fiction`, `9-14`, `B2D DEALS`, ...). Note that crumb is
+not a single taxonomy: it mixes genre, age band and merchandising bucket, so a
+product is filed under one of the three, never consistently. Use
+`custom_label_1` for age-based product sets rather than product_type.
+
+Genre (Fiction / Non-Fiction) is deliberately dropped - it was judged
+unimportant for this feed, and 1,760 of the 1,861 genre-tagged items already
+stated it in their product_type crumb anyway.
 
 `custom_label_2` / `custom_label_3` are Books2Door promo tags and are passed
 through untouched. `id`, `price`, `sale_price`, `link`, `gtin`, `item_group_id`
@@ -33,7 +44,7 @@ Example:
     after   Alex Rider (Book 12-14)
             custom_label_0=Anthony Horowitz  custom_label_1=Ages 9-12
             custom_label_4=3 Books Collection Set
-            product_type=Fiction > Paperback
+            material=Paperback   product_type=Fiction
 
 No title may mention an age, Paperback, Hardback or a binding: those are stripped
 wherever they appear, not just at the end. Source titles are wildly inconsistent

@@ -16,12 +16,14 @@ FORMAT_WORDS = [
     "Paperback/Board Book", "Hardback/Board Book", "Educational Toys", "Educational Toy",
     "Board Books", "Board Book", "Flexibound", "Hardcover", "Hardback", "Paperback",
     "Yoga Cards",
+    "Hardabck", "Hardaback",          # misspelt in the source on 2 products
 ]
 FORMAT_CANON = {
     "board books": "Board Book", "hardcover": "Hardback",
     "educational toys": "Educational Toy", "hardback/paperback": "Paperback/Hardback",
     "leather bound/hardback": "Leather Bound Hardback",
     "sprayed edge hardback": "Sprayed Edges Hardback",
+    "hardabck": "Hardback", "hardaback": "Hardback",
     "paperback/board book": "Board Book/Paperback",
 }
 GENRES = {
