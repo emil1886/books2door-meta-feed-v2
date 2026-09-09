@@ -64,6 +64,37 @@ wherever they appear, not just at the end. Source titles are wildly inconsistent
 'Fiction/Non Fiction'), so the parser finds each detail wherever it sits and
 excises it rather than peeling segments off the end.
 
+## Website categories
+
+`g:product_type` carries the categories a product sits in on books2door.com,
+labelled as the shopper sees them in the nav dropdowns:
+
+    7-9 > Book Collections > Funny Books > Kids' Books > New Kids Books > Tom Gates
+
+DataFeedWatch's own crumb stays first so existing product sets keep matching,
+then the site categories. Meta matches any level with "contains". Coverage is
+98% of products, a median of 3 categories each, longest path 699 characters
+(the limit is 750).
+
+Nav labels are used, not collection titles - they differ, and the label is what
+the shopper recognises: "Books2Door Top 100" is internally
+*Bestselling Books - Top 200*, and "Ages 9-12+" is *Books for Ages 9-14*.
+
+**Twelve navigation parents are excluded** - they hold essentially the whole
+catalogue and so describe nothing: Gifts at Books2Door (99.9%), Publishers
+(99.6%), Books by Age (99.6%), Authors (97%), Genres & Types (97%), Book Series
+(97%), New Books (85%), Bestselling Books (85%) and similar. Merchandising and
+price buckets (Clearance, PriceDrop, Gifts Under £10) are deliberately kept.
+
+`data/categories.json` is a **snapshot**, not a live crawl - the store rate
+limits hard, and pricing must never wait on scraping it. Refresh it with:
+
+    python refresh_categories.py      # ~15 minutes, 159 collections
+
+Products added since the last refresh carry no categories; nothing else about
+them is affected. If DataFeedWatch can be made to export Shopify collections
+directly, that is strictly better - map it into product_type and drop this file.
+
 ## Run it
 
     python build_feed.py --out-dir docs --review-csv review_titles.csv

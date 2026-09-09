@@ -3,10 +3,10 @@
 
 Source of truth: the existing DataFeedWatch Meta feed (read-only).
 This script re-titles each item so g:title is the product name alone, and
-puts author and age into custom labels, binding into g:material and pack
-quantity into g:size.
+puts author and age into custom labels, binding into g:material, pack
+quantity into g:size, and the website categories into g:product_type.
 """
-import argparse, csv, io, os, re, sys, urllib.request
+import argparse, csv, io, json, os, re, sys, urllib.request
 import xml.etree.ElementTree as ET
 from parse_titles import parse_title
 
@@ -83,17 +83,33 @@ def build_material(fmt):
     return MATERIAL.get(first, "")
 
 
-def build_product_type(original, genre, age, fmt, keep_format_crumb):
-    """The original DataFeedWatch crumb, unchanged. Binding now lives in
-    g:material, and genre and age have their own fields."""
+def load_categories(path):
+    """Website categories per product, keyed by Shopify variant id (= g:id).
+
+    A committed snapshot, not a live crawl. The store rate-limits hard enough
+    that a crawl inside the build would be a coin flip, and pricing must never
+    wait on scraping. Refresh it with refresh_categories.py. Products added
+    since the snapshot simply carry no categories; nothing else is affected.
+    """
+    if not path or not os.path.exists(path):
+        return {}
+    with io.open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def build_product_type(original, categories):
+    """DataFeedWatch's own crumb first, so product sets filtering on it keep
+    matching, then the website categories as they are labelled in the site's nav
+    dropdowns. Meta matches any level of the path with 'contains'."""
     crumbs, seen = [], set()
-    for c in [original]:
+    for c in [original] + list(categories):
         c = (c or "").strip()
         if not c:
             continue
-        key = re.sub(r"[^a-z0-9]", "", c.lower())
-        # skip a crumb already implied by an earlier one (e.g. pt '9-14' vs age 'Ages 9-14')
-        if key in seen or any(key in s or s in key for s in seen):
+        # 'Ages 7-9' and DataFeedWatch's '7-9' are the same crumb, so normalise
+        # the prefix away before comparing; distinct categories stay distinct.
+        key = re.sub(r"[^a-z0-9]", "", re.sub(r"^ages?\s+", "", c.lower()))
+        if key in seen:
             continue
         seen.add(key)
         crumbs.append(c)
@@ -106,6 +122,8 @@ def main():
     ap.add_argument("--out-dir", default="docs")
     ap.add_argument("--basename", default="books2door_meta_feed_v2")
     ap.add_argument("--min-products", type=int, default=3500)
+    ap.add_argument("--categories", default=os.path.join("data", "categories.json"),
+                    help="snapshot of website categories per product id")
     ap.add_argument("--review-csv", default="")
     args = ap.parse_args()
 
@@ -118,7 +136,12 @@ def main():
     if len(items) < args.min_products:
         sys.exit(f"ERROR: only {len(items)} items (min {args.min_products}) - refusing to publish")
 
-    review, stats = [], {"author": 0, "format": 0, "age": 0, "genre": 0, "set": 0, "material": 0, "changed": 0}
+    cats = load_categories(args.categories)
+    print(f"categories snapshot: {len(cats)} products"
+          if cats else "categories snapshot: NONE - product_type keeps only the source crumb")
+
+    review, stats = [], {"author": 0, "format": 0, "age": 0, "genre": 0, "set": 0,
+                         "material": 0, "categorised": 0, "changed": 0}
     for item in items:
         orig_title = gtext(item, "title")
         p = parse_title(orig_title)
@@ -149,8 +172,10 @@ def main():
         if p["genre"]:
             stats["genre"] += 1
 
-        pt = build_product_type(gtext(item, "product_type"), p["genre"], p["age"],
-                                p["format"], False)
+        product_cats = cats.get(gtext(item, "id"), [])
+        if product_cats:
+            stats["categorised"] += 1
+        pt = build_product_type(gtext(item, "product_type"), product_cats)
         if pt:
             gset(item, "product_type", pt)
         if new_title != orig_title:
@@ -159,7 +184,8 @@ def main():
         review.append({"id": gtext(item, "id"), "old_title": orig_title, "new_title": new_title,
                        "author": p["author"], "format": p["format"], "age": p["age"],
                        "genre": p["genre"], "material": material, "set": p["pack"],
-                       "pack_count": p["pack_count"], "product_type": pt})
+                       "pack_count": p["pack_count"], "n_categories": len(product_cats),
+                       "product_type": pt})
 
     os.makedirs(args.out_dir, exist_ok=True)
     xml_path = os.path.join(args.out_dir, args.basename + ".xml")
@@ -185,7 +211,7 @@ def main():
     n = len(items)
     print(f"items            : {n}")
     print(f"titles rewritten : {stats['changed']} ({stats['changed']*100//n}%)")
-    for k in ("author", "age", "set", "material", "format", "genre"):
+    for k in ("author", "age", "set", "material", "categorised", "format", "genre"):
         print(f"{k:17s}: {stats[k]} ({stats[k]*100//n}%)")
     print(f"wrote {xml_path}")
     print(f"wrote {csv_path}")
