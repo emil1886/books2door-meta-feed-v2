@@ -69,31 +69,39 @@ excises it rather than peeling segments off the end.
 `g:product_type` carries the categories a product sits in on books2door.com,
 labelled as the shopper sees them in the nav dropdowns:
 
-    7-9 > Book Collections > Funny Books > Kids' Books > New Kids Books > Tom Gates
+    7-9 > Book Collections > Kids' Books > New Kids Books
 
-DataFeedWatch's own crumb stays first so existing product sets keep matching,
-then the site categories. Meta matches any level with "contains". Coverage is
-98% of products, a median of 3 categories each, longest path 699 characters
-(the limit is 750).
+DataFeedWatch's own crumb stays first so existing product sets keep matching.
+Meta matches any level of the path with "contains". Coverage is 98% of products,
+a median of 3 categories each, longest path 642 characters against a 750 limit.
 
-Nav labels are used, not collection titles - they differ, and the label is what
-the shopper recognises: "Books2Door Top 100" is internally
-*Bestselling Books - Top 200*, and "Ages 9-12+" is *Books for Ages 9-14*.
+**Membership is live.** DataFeedWatch emits a *second* `<g:product_type>` holding
+a `;`-separated list of every Shopify collection a product belongs to. The build
+reads that, keeps only collections that appear in the site nav, and collapses the
+two tags into the one Meta reads. New products are categorised the day they
+appear - there is no crawl and nothing cached about which product is in what.
 
-**Twelve navigation parents are excluded** - they hold essentially the whole
-catalogue and so describe nothing: Gifts at Books2Door (99.9%), Publishers
-(99.6%), Books by Age (99.6%), Authors (97%), Genres & Types (97%), Book Series
-(97%), New Books (85%), Bestselling Books (85%) and similar. Merchandising and
-price buckets (Clearance, PriceDrop, Gifts Under £10) are deliberately kept.
+`data/nav_categories.json` holds only two things, and neither is membership:
 
-`data/categories.json` is a **snapshot**, not a live crawl - the store rate
-limits hard, and pricing must never wait on scraping it. Refresh it with:
+* **collection title -> nav label.** They differ, and the label is what the
+  shopper recognises: *Bestselling Books - Top 200* is shown as
+  "Books2Door Top 100", *Books for Ages 9-14* as "Ages 9-12+".
+* **parents to drop** - 13 nav entries true of nearly every product, so they
+  would filter nothing: All Books, Bestsellers, Top Authors, Top Publishers,
+  Genres & Types, Series, Books By Age, Gifts, Deals, New and similar.
 
-    python refresh_categories.py      # ~15 minutes, 159 collections
+Everything DataFeedWatch sends that is *not* in the site nav is ignored: roughly
+585 names, mostly inventory bookkeeping (B2D Listed Books, Core Products) and
+overlapping price bands (Books for £10-£15, Bestseller Books £10 - £15), which
+would otherwise swamp the real categories at a median of 10 per product.
 
-Products added since the last refresh carry no categories; nothing else about
-them is affected. If DataFeedWatch can be made to export Shopify collections
-directly, that is strictly better - map it into product_type and drop this file.
+Refresh the label map when the site nav changes:
+
+    python refresh_nav_labels.py
+
+**Known upstream limit:** DataFeedWatch truncates its collection list at 750
+characters, which affects 81 products. Those lose whichever collections fall
+past the cut, so a very heavily merchandised product may be missing a category.
 
 ## Run it
 

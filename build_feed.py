@@ -5,6 +5,9 @@ Source of truth: the existing DataFeedWatch Meta feed (read-only).
 This script re-titles each item so g:title is the product name alone, and
 puts author and age into custom labels, binding into g:material, pack
 quantity into g:size, and the website categories into g:product_type.
+
+Category membership comes live from DataFeedWatch, which supplies a second
+<g:product_type> listing every Shopify collection a product belongs to.
 """
 import argparse, csv, io, json, os, re, sys, urllib.request
 import xml.etree.ElementTree as ET
@@ -83,18 +86,41 @@ def build_material(fmt):
     return MATERIAL.get(first, "")
 
 
-def load_categories(path):
-    """Website categories per product, keyed by Shopify variant id (= g:id).
+def load_nav_categories(path):
+    """-> (collection title -> nav label, set of nav parents to drop).
 
-    A committed snapshot, not a live crawl. The store rate-limits hard enough
-    that a crawl inside the build would be a coin flip, and pricing must never
-    wait on scraping. Refresh it with refresh_categories.py. Products added
-    since the snapshot simply carry no categories; nothing else is affected.
+    DataFeedWatch supplies collection membership live, in a second
+    <g:product_type> holding a ';'-separated list of collection TITLES. This
+    file only translates those titles into the labels the shopper actually sees
+    in the nav ("Bestselling Books - Top 200" -> "Books2Door Top 100") and names
+    the nav parents worth dropping. Membership itself is never cached here, so
+    new products are categorised the day they appear.
     """
     if not path or not os.path.exists(path):
-        return {}
+        return {}, set()
     with io.open(path, encoding="utf-8") as fh:
-        return json.load(fh)
+        d = json.load(fh)
+    return d.get("nav_label_by_collection_title", {}), set(d.get("parents", []))
+
+
+def categories_from_source(item, label_by_title, parents):
+    """The site categories for one product, read from DataFeedWatch's list.
+
+    The first <g:product_type> is DataFeedWatch's own single crumb; the second
+    is the collection list. Only collections that appear in the site nav are
+    kept - the rest are inventory bookkeeping (B2D Listed Books, Core Products)
+    or price bands, which would swamp the real categories.
+    """
+    tags = item.findall(f"{{{G}}}product_type")
+    if len(tags) < 2:
+        return []
+    raw = (tags[1].text or "").split(";")
+    out = []
+    for title in (t.strip() for t in raw):
+        label = label_by_title.get(title)
+        if label and label not in parents and label not in out:
+            out.append(label)
+    return sorted(out)
 
 
 def build_product_type(original, categories):
@@ -122,8 +148,8 @@ def main():
     ap.add_argument("--out-dir", default="docs")
     ap.add_argument("--basename", default="books2door_meta_feed_v2")
     ap.add_argument("--min-products", type=int, default=3500)
-    ap.add_argument("--categories", default=os.path.join("data", "categories.json"),
-                    help="snapshot of website categories per product id")
+    ap.add_argument("--nav-categories", default=os.path.join("data", "nav_categories.json"),
+                    help="collection title -> nav label map, and the parents to drop")
     ap.add_argument("--review-csv", default="")
     args = ap.parse_args()
 
@@ -136,9 +162,10 @@ def main():
     if len(items) < args.min_products:
         sys.exit(f"ERROR: only {len(items)} items (min {args.min_products}) - refusing to publish")
 
-    cats = load_categories(args.categories)
-    print(f"categories snapshot: {len(cats)} products"
-          if cats else "categories snapshot: NONE - product_type keeps only the source crumb")
+    label_by_title, parents = load_nav_categories(args.nav_categories)
+    print(f"nav category map: {len(label_by_title)} collections, {len(parents)} parents dropped"
+          if label_by_title else
+          "nav category map: NONE - product_type keeps only the source crumb")
 
     review, stats = [], {"author": 0, "format": 0, "age": 0, "genre": 0, "set": 0,
                          "material": 0, "categorised": 0, "changed": 0}
@@ -172,10 +199,13 @@ def main():
         if p["genre"]:
             stats["genre"] += 1
 
-        product_cats = cats.get(gtext(item, "id"), [])
+        product_cats = categories_from_source(item, label_by_title, parents)
         if product_cats:
             stats["categorised"] += 1
         pt = build_product_type(gtext(item, "product_type"), product_cats)
+        # Collapse DataFeedWatch's two product_type tags into the single one Meta
+        # reads - leaving both would make the field ambiguous.
+        gclear(item, "product_type")
         if pt:
             gset(item, "product_type", pt)
         if new_title != orig_title:
