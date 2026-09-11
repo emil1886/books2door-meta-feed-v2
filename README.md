@@ -86,19 +86,26 @@ repeated `<internal_label>` tags (current, and note it is *not* namespaced, like
 `;`-separated list (older). Without that fallback an upstream change silently
 empties the category field - which is exactly what happened on 2026-09-10.
 
-`data/nav_categories.json` holds only two things, and neither is membership:
+`data/nav_categories.json` holds the naming and the exclusions - never
+membership:
 
-* **collection title -> nav label.** They differ, and the label is what the
-  shopper recognises: *Bestselling Books - Top 200* is shown as
-  "Books2Door Top 100", *Books for Ages 9-14* as "Ages 9-12+".
-* **parents to drop** - 13 nav entries true of nearly every product, so they
-  would filter nothing: All Books, Bestsellers, Top Authors, Top Publishers,
-  Genres & Types, Series, Books By Age, Gifts, Deals, New and similar.
+* **collection title -> nav label** for the 161 collections in the site nav.
+  They differ, and the label is what the shopper recognises: *Bestselling Books
+  - Top 200* is shown as "Books2Door Top 100", *Books for Ages 9-14* as
+  "Ages 9-12+". Everything else keeps its own collection title.
+* **parents** - 26 collections sitting on more than half the catalogue, so they
+  filter nothing: All, Core Products, Top Authors, Top Publishers, Genres &
+  Types, Series, Books By Age, Bestselling Books and similar.
+* **excluded** - 46 price bands and internal bookkeeping: Books for £10-£15,
+  Bestseller Books £5 - £10, B2D Listed Books, B2D Stocked Books, Brands.
 
-Everything DataFeedWatch sends that is *not* in the site nav is ignored: roughly
-585 names, mostly inventory bookkeeping (B2D Listed Books, Core Products) and
-overlapping price bands (Books for £10-£15, Bestseller Books £10 - £15), which
-would otherwise swamp the real categories at a median of 10 per product.
+Everything else becomes a crumb - 594 categories in all. An earlier version kept
+only collections found in the site nav, which silently cost 464 real
+subcategories: publisher collections (Penguin Books, Hachette Books), genres
+(Fantasy Books), seasonal picks (Summer Reads) and age refinements (New Books
+for Kids - Ages 8-12+). The nav's dropdown markup carries only the top level,
+not the children of Top Publishers or Genres & Types, so scraping it was never
+going to find them.
 
 Refresh the label map when the site nav changes:
 

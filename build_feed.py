@@ -87,7 +87,7 @@ def build_material(fmt):
 
 
 def load_nav_categories(path):
-    """-> (collection title -> nav label, set of nav parents to drop).
+    """-> (collection title -> nav label, set of collection titles to drop).
 
     DataFeedWatch supplies collection membership live, in a second
     <g:product_type> holding a ';'-separated list of collection TITLES. This
@@ -100,7 +100,8 @@ def load_nav_categories(path):
         return {}, set()
     with io.open(path, encoding="utf-8") as fh:
         d = json.load(fh)
-    return d.get("nav_label_by_collection_title", {}), set(d.get("parents", []))
+    drop = set(d.get("parents", [])) | set(d.get("excluded", []))
+    return d.get("nav_label_by_collection_title", {}), drop
 
 
 def source_collections(item):
@@ -126,17 +127,26 @@ def source_collections(item):
     return []
 
 
-def categories_from_source(item, label_by_title, parents):
+def categories_from_source(item, label_by_title, drop):
     """The site categories for one product.
 
-    Only collections that appear in the site nav are kept - the rest are
-    inventory bookkeeping (B2D Listed Books, Core Products) or price bands,
-    which would swamp the real categories at a median of 10 per product.
+    Every collection is kept except the two useless kinds: 'parents' that sit on
+    more than half the catalogue and so filter nothing (All, Core Products, Top
+    Authors), and price bands and internal bookkeeping (Books for £10-£15, B2D
+    Listed Books). Collections that appear in the site nav are renamed to the
+    label the shopper sees there; the rest keep their own title.
+
+    Restricting this to the site nav alone cost 464 real subcategories -
+    publisher collections, genres, seasonal picks - because the nav's dropdown
+    markup only carries the top level, not the children of Top Publishers,
+    Genres & Types and the like.
     """
     out = []
     for title in source_collections(item):
-        label = label_by_title.get(title)
-        if label and label not in parents and label not in out:
+        if title in drop:
+            continue
+        label = label_by_title.get(title, title)
+        if label not in out:
             out.append(label)
     return sorted(out)
 
@@ -181,7 +191,7 @@ def main():
         sys.exit(f"ERROR: only {len(items)} items (min {args.min_products}) - refusing to publish")
 
     label_by_title, parents = load_nav_categories(args.nav_categories)
-    print(f"nav category map: {len(label_by_title)} collections, {len(parents)} parents dropped"
+    print(f"category map: {len(label_by_title)} nav labels, {len(parents)} collections excluded"
           if label_by_title else
           "nav category map: NONE - product_type keeps only the source crumb")
 
