@@ -75,11 +75,16 @@ DataFeedWatch's own crumb stays first so existing product sets keep matching.
 Meta matches any level of the path with "contains". Coverage is 98% of products,
 a median of 3 categories each, longest path 642 characters against a 750 limit.
 
-**Membership is live.** DataFeedWatch emits a *second* `<g:product_type>` holding
-a `;`-separated list of every Shopify collection a product belongs to. The build
-reads that, keeps only collections that appear in the site nav, and collapses the
-two tags into the one Meta reads. New products are categorised the day they
+**Membership is live.** DataFeedWatch lists every Shopify collection a product
+belongs to, and the build reads it, keeps only collections in the site nav, and
+writes them into `product_type`. New products are categorised the day they
 appear - there is no crawl and nothing cached about which product is in what.
+
+DataFeedWatch has changed the shape of this twice, so the build reads both:
+repeated `<internal_label>` tags (current, and note it is *not* namespaced, like
+`rrp` and `perc_off`), falling back to a second `<g:product_type>` holding a
+`;`-separated list (older). Without that fallback an upstream change silently
+empties the category field - which is exactly what happened on 2026-09-10.
 
 `data/nav_categories.json` holds only two things, and neither is membership:
 
@@ -99,9 +104,12 @@ Refresh the label map when the site nav changes:
 
     python refresh_nav_labels.py
 
-**Known upstream limit:** DataFeedWatch truncates its collection list at 750
-characters, which affects 81 products. Those lose whichever collections fall
-past the cut, so a very heavily merchandised product may be missing a category.
+The 750-character truncation that affected 81 products under the old shape is
+gone - repeated tags have no such cap. Longest path is now 304 characters.
+
+`internal_label` is not a field Meta reads, so it is carried through untouched
+but does nothing on its own. The categories reach Meta because they are written
+into `product_type`, which Meta does read.
 
 ## Run it
 

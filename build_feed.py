@@ -103,20 +103,38 @@ def load_nav_categories(path):
     return d.get("nav_label_by_collection_title", {}), set(d.get("parents", []))
 
 
-def categories_from_source(item, label_by_title, parents):
-    """The site categories for one product, read from DataFeedWatch's list.
+def source_collections(item):
+    """Every Shopify collection DataFeedWatch says this product belongs to.
 
-    The first <g:product_type> is DataFeedWatch's own single crumb; the second
-    is the collection list. Only collections that appear in the site nav are
-    kept - the rest are inventory bookkeeping (B2D Listed Books, Core Products)
-    or price bands, which would swamp the real categories.
+    DataFeedWatch has changed how it sends these twice, so read both shapes:
+
+    * <internal_label> repeated, one collection each - the current shape. Note
+      it is NOT in the g: namespace, like rrp and perc_off.
+    * a second <g:product_type> holding a ';'-separated list - the older shape,
+      which capped at 750 characters and truncated 81 products mid-word.
+
+    Falling back keeps the feed working across another upstream change rather
+    than silently emptying the category field, which is what happened on
+    2026-09-10 when the second product_type disappeared.
     """
+    labels = [(e.text or "").strip() for e in item.findall("internal_label")]
+    if labels:
+        return [x for x in labels if x]
     tags = item.findall(f"{{{G}}}product_type")
-    if len(tags) < 2:
-        return []
-    raw = (tags[1].text or "").split(";")
+    if len(tags) > 1:
+        return [x.strip() for x in (tags[1].text or "").split(";") if x.strip()]
+    return []
+
+
+def categories_from_source(item, label_by_title, parents):
+    """The site categories for one product.
+
+    Only collections that appear in the site nav are kept - the rest are
+    inventory bookkeeping (B2D Listed Books, Core Products) or price bands,
+    which would swamp the real categories at a median of 10 per product.
+    """
     out = []
-    for title in (t.strip() for t in raw):
+    for title in source_collections(item):
         label = label_by_title.get(title)
         if label and label not in parents and label not in out:
             out.append(label)
