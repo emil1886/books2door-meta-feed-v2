@@ -175,6 +175,23 @@ def _tidy_name(name):
     a short word - 'The Power of Du'a' - is left alone.
     """
     out = (name or "").strip()
+
+    # A leftover set word once the count has gone: 'The (Series 3) Box Set'.
+    out = re.sub(r"\s+(?:box\s+set|collection\s+set|box\s+collection)\s*$", "",
+                 out, flags=re.I)
+
+    # The pack phrase sometimes sits right after the article that introduces it -
+    # 'Geronimo Stilton: The 30 Books Collection Set (Series 3)' - so removing it
+    # strands a bare 'The' mid-title. Name the thing rather than leave the article
+    # hanging in front of the bracket.
+    #
+    # Only when something real follows, so we never invent a name out of nothing:
+    # 'The Subtle Art of Not Giving a' is truncated in the source and must stay
+    # that way, and a trailing article with no remainder is simply dropped below.
+    out = re.sub(r"((?:(?<=\s)|^)(?:The|A|An))\s+(?=[(\[])", r"\1 Complete Collection ",
+                 out, count=1, flags=re.I)
+    out = re.sub(r"\s{2,}", " ", out).strip()
+
     for _ in range(3):                       # '... Collection Of' -> '... Collection'
         stripped = re.sub(r"\s+(?:the|a|an|of|and|by|with|in|for|to|on|&)\s*$", "",
                           out, flags=re.I)
