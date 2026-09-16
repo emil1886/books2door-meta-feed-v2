@@ -64,59 +64,15 @@ wherever they appear, not just at the end. Source titles are wildly inconsistent
 'Fiction/Non Fiction'), so the parser finds each detail wherever it sits and
 excises it rather than peeling segments off the end.
 
-## Website categories
+## Categories are not this feed's job
 
-`g:product_type` carries the categories a product sits in on books2door.com,
-labelled as the shopper sees them in the nav dropdowns:
+Books2Door handles them upstream in DataFeedWatch, which emits them as repeated
+`<internal_label>` tags. Those pass through untouched, and `g:product_type` is
+left byte-identical to the source.
 
-    7-9 > Book Collections > Kids' Books > New Kids Books
-
-DataFeedWatch's own crumb stays first so existing product sets keep matching.
-Meta matches any level of the path with "contains". Coverage is 98% of products,
-a median of 3 categories each, longest path 642 characters against a 750 limit.
-
-**Membership is live.** DataFeedWatch lists every Shopify collection a product
-belongs to, and the build reads it, keeps only collections in the site nav, and
-writes them into `product_type`. New products are categorised the day they
-appear - there is no crawl and nothing cached about which product is in what.
-
-DataFeedWatch has changed the shape of this twice, so the build reads both:
-repeated `<internal_label>` tags (current, and note it is *not* namespaced, like
-`rrp` and `perc_off`), falling back to a second `<g:product_type>` holding a
-`;`-separated list (older). Without that fallback an upstream change silently
-empties the category field - which is exactly what happened on 2026-09-10.
-
-`data/nav_categories.json` holds the naming and the exclusions - never
-membership:
-
-* **collection title -> nav label** for the 161 collections in the site nav.
-  They differ, and the label is what the shopper recognises: *Bestselling Books
-  - Top 200* is shown as "Books2Door Top 100", *Books for Ages 9-14* as
-  "Ages 9-12+". Everything else keeps its own collection title.
-* **parents** - 26 collections sitting on more than half the catalogue, so they
-  filter nothing: All, Core Products, Top Authors, Top Publishers, Genres &
-  Types, Series, Books By Age, Bestselling Books and similar.
-* **excluded** - 46 price bands and internal bookkeeping: Books for £10-£15,
-  Bestseller Books £5 - £10, B2D Listed Books, B2D Stocked Books, Brands.
-
-Everything else becomes a crumb - 594 categories in all. An earlier version kept
-only collections found in the site nav, which silently cost 464 real
-subcategories: publisher collections (Penguin Books, Hachette Books), genres
-(Fantasy Books), seasonal picks (Summer Reads) and age refinements (New Books
-for Kids - Ages 8-12+). The nav's dropdown markup carries only the top level,
-not the children of Top Publishers or Genres & Types, so scraping it was never
-going to find them.
-
-Refresh the label map when the site nav changes:
-
-    python refresh_nav_labels.py
-
-The 750-character truncation that affected 81 products under the old shape is
-gone - repeated tags have no such cap. Longest path is now 304 characters.
-
-`internal_label` is not a field Meta reads, so it is carried through untouched
-but does nothing on its own. The categories reach Meta because they are written
-into `product_type`, which Meta does read.
+This feed used to build a category path in `product_type` from that same data.
+That work is removed as of 2026-09-16 - see the git history if it is ever needed
+again. Note `internal_label` is not namespaced, unlike most fields here.
 
 ## Run it
 

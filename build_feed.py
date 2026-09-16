@@ -3,11 +3,12 @@
 
 Source of truth: the existing DataFeedWatch Meta feed (read-only).
 This script re-titles each item so g:title is the product name alone, and
-puts author and age into custom labels, binding into g:material, pack
-quantity into g:size, and the website categories into g:product_type.
+puts author and age into custom labels, binding into g:material and pack
+quantity into g:size - the details the old titles crammed in.
 
-Category membership comes live from DataFeedWatch, which supplies a second
-<g:product_type> listing every Shopify collection a product belongs to.
+Categories are NOT this feed's job. Books2Door handles them upstream in
+DataFeedWatch via <internal_label>, which passes through untouched, so
+g:product_type is left exactly as the source sends it.
 """
 import argparse, csv, io, json, os, re, sys, urllib.request
 import xml.etree.ElementTree as ET
@@ -86,98 +87,12 @@ def build_material(fmt):
     return MATERIAL.get(first, "")
 
 
-def load_nav_categories(path):
-    """-> (collection title -> nav label, set of collection titles to drop).
-
-    DataFeedWatch supplies collection membership live, in a second
-    <g:product_type> holding a ';'-separated list of collection TITLES. This
-    file only translates those titles into the labels the shopper actually sees
-    in the nav ("Bestselling Books - Top 200" -> "Books2Door Top 100") and names
-    the nav parents worth dropping. Membership itself is never cached here, so
-    new products are categorised the day they appear.
-    """
-    if not path or not os.path.exists(path):
-        return {}, set()
-    with io.open(path, encoding="utf-8") as fh:
-        d = json.load(fh)
-    drop = set(d.get("parents", [])) | set(d.get("excluded", []))
-    return d.get("nav_label_by_collection_title", {}), drop
-
-
-def source_collections(item):
-    """Every Shopify collection DataFeedWatch says this product belongs to.
-
-    DataFeedWatch has changed how it sends these twice, so read both shapes:
-
-    * <internal_label> repeated, one collection each - the current shape. Note
-      it is NOT in the g: namespace, like rrp and perc_off.
-    * a second <g:product_type> holding a ';'-separated list - the older shape,
-      which capped at 750 characters and truncated 81 products mid-word.
-
-    Falling back keeps the feed working across another upstream change rather
-    than silently emptying the category field, which is what happened on
-    2026-09-10 when the second product_type disappeared.
-    """
-    labels = [(e.text or "").strip() for e in item.findall("internal_label")]
-    if labels:
-        return [x for x in labels if x]
-    tags = item.findall(f"{{{G}}}product_type")
-    if len(tags) > 1:
-        return [x.strip() for x in (tags[1].text or "").split(";") if x.strip()]
-    return []
-
-
-def categories_from_source(item, label_by_title, drop):
-    """The site categories for one product.
-
-    Every collection is kept except the two useless kinds: 'parents' that sit on
-    more than half the catalogue and so filter nothing (All, Core Products, Top
-    Authors), and price bands and internal bookkeeping (Books for £10-£15, B2D
-    Listed Books). Collections that appear in the site nav are renamed to the
-    label the shopper sees there; the rest keep their own title.
-
-    Restricting this to the site nav alone cost 464 real subcategories -
-    publisher collections, genres, seasonal picks - because the nav's dropdown
-    markup only carries the top level, not the children of Top Publishers,
-    Genres & Types and the like.
-    """
-    out = []
-    for title in source_collections(item):
-        if title in drop:
-            continue
-        label = label_by_title.get(title, title)
-        if label not in out:
-            out.append(label)
-    return sorted(out)
-
-
-def build_product_type(original, categories):
-    """DataFeedWatch's own crumb first, so product sets filtering on it keep
-    matching, then the website categories as they are labelled in the site's nav
-    dropdowns. Meta matches any level of the path with 'contains'."""
-    crumbs, seen = [], set()
-    for c in [original] + list(categories):
-        c = (c or "").strip()
-        if not c:
-            continue
-        # 'Ages 7-9' and DataFeedWatch's '7-9' are the same crumb, so normalise
-        # the prefix away before comparing; distinct categories stay distinct.
-        key = re.sub(r"[^a-z0-9]", "", re.sub(r"^ages?\s+", "", c.lower()))
-        if key in seen:
-            continue
-        seen.add(key)
-        crumbs.append(c)
-    return " > ".join(crumbs)
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default=SOURCE_URL)
     ap.add_argument("--out-dir", default="docs")
     ap.add_argument("--basename", default="books2door_meta_feed_v2")
     ap.add_argument("--min-products", type=int, default=3500)
-    ap.add_argument("--nav-categories", default=os.path.join("data", "nav_categories.json"),
-                    help="collection title -> nav label map, and the parents to drop")
     ap.add_argument("--review-csv", default="")
     args = ap.parse_args()
 
@@ -190,13 +105,8 @@ def main():
     if len(items) < args.min_products:
         sys.exit(f"ERROR: only {len(items)} items (min {args.min_products}) - refusing to publish")
 
-    label_by_title, parents = load_nav_categories(args.nav_categories)
-    print(f"category map: {len(label_by_title)} nav labels, {len(parents)} collections excluded"
-          if label_by_title else
-          "nav category map: NONE - product_type keeps only the source crumb")
-
     review, stats = [], {"author": 0, "format": 0, "age": 0, "genre": 0, "set": 0,
-                         "material": 0, "categorised": 0, "changed": 0}
+                         "material": 0, "changed": 0}
     for item in items:
         orig_title = gtext(item, "title")
         p = parse_title(orig_title)
@@ -227,23 +137,14 @@ def main():
         if p["genre"]:
             stats["genre"] += 1
 
-        product_cats = categories_from_source(item, label_by_title, parents)
-        if product_cats:
-            stats["categorised"] += 1
-        pt = build_product_type(gtext(item, "product_type"), product_cats)
-        # Collapse DataFeedWatch's two product_type tags into the single one Meta
-        # reads - leaving both would make the field ambiguous.
-        gclear(item, "product_type")
-        if pt:
-            gset(item, "product_type", pt)
         if new_title != orig_title:
             stats["changed"] += 1
 
         review.append({"id": gtext(item, "id"), "old_title": orig_title, "new_title": new_title,
                        "author": p["author"], "format": p["format"], "age": p["age"],
                        "genre": p["genre"], "material": material, "set": p["pack"],
-                       "pack_count": p["pack_count"], "n_categories": len(product_cats),
-                       "product_type": pt})
+                       "pack_count": p["pack_count"],
+                       "product_type": gtext(item, "product_type")})
 
     os.makedirs(args.out_dir, exist_ok=True)
     xml_path = os.path.join(args.out_dir, args.basename + ".xml")
@@ -269,7 +170,7 @@ def main():
     n = len(items)
     print(f"items            : {n}")
     print(f"titles rewritten : {stats['changed']} ({stats['changed']*100//n}%)")
-    for k in ("author", "age", "set", "material", "categorised", "format", "genre"):
+    for k in ("author", "age", "set", "material", "format", "genre"):
         print(f"{k:17s}: {stats[k]} ({stats[k]*100//n}%)")
     print(f"wrote {xml_path}")
     print(f"wrote {csv_path}")

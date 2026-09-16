@@ -162,6 +162,30 @@ def strip_pack(title):
     return _heal(title[:m.start()] + " " + title[m.end():])
 
 
+def _tidy_name(name):
+    """Final pass over a cleaned title.
+
+    Removing an author or a pack phrase can strand a connector at the end -
+    'Complete Collection Of' once '12 Books Set' goes, or a bare 'by' when what
+    followed it turned out to be a pack phrase rather than a person. It can also
+    strand an opening bracket, as when '(Most Loved by Little People)' loses its
+    second half to the author match.
+
+    The connector must be preceded by whitespace, so a title genuinely ending in
+    a short word - 'The Power of Du'a' - is left alone.
+    """
+    out = (name or "").strip()
+    for _ in range(3):                       # '... Collection Of' -> '... Collection'
+        stripped = re.sub(r"\s+(?:the|a|an|of|and|by|with|in|for|to|on|&)\s*$", "",
+                          out, flags=re.I)
+        if stripped == out:
+            break
+        out = stripped
+    if out.count("(") > out.count(")"):      # opening bracket with no closing half
+        out = out[:out.rfind("(")].strip()
+    return out.strip(" ,:;-–")
+
+
 def parse_title(title):
     t = re.sub(r"\s+", " ", (title or "")).strip()
 
@@ -206,7 +230,9 @@ def parse_title(title):
             em = re.search(pat, tail, re.I)
             if em:
                 cut = min(cut, em.start())
-        cand = tail[:cut].strip(" ,:-")
+        # an author lifted from inside brackets keeps the closing half otherwise,
+        # e.g. '(Most Loved by Little People)' -> 'Little People)'
+        cand = tail[:cut].strip(" ,:-()[]")
         if cand and len(cand) <= 60 and cand.count(" ") <= 7:
             author = cand
             name = _heal(name[:am.start()] + " " + tail[cut:])
@@ -214,6 +240,7 @@ def parse_title(title):
     bn = BOOKNUM_RE.search(t)
     setinfo = " ".join(filter(None, [bn.group(0).strip() if bn else "", pack]))
 
+    name = _tidy_name(name)
     if not name:
         name = t
     return {"name": name, "author": author, "format": fmt, "age": age,
