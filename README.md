@@ -1,5 +1,14 @@
 # Books2Door Meta feed v2 - clean titles
 
+## Feed URL
+
+    https://emil1886.github.io/books2door-meta-feed-v2/feed.xml
+
+The original `books2door_meta_feed_v2.xml` is still published as a copy so the
+URL already given to Meta keeps working. Drop that step from the workflow once
+nothing points at it.
+
+
 A **derived** Meta catalogue feed for Books2Door. It does not touch Shopify.
 
     Shopify  ->  DataFeedWatch (shop 30774)  ->  [this repo]  ->  Meta catalogue
