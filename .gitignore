@@ -3,3 +3,5 @@ __pycache__/
 review_titles.csv
 docs/books2door_meta_feed_v2.xml
 docs/books2door_meta_feed_v2.csv
+docs/feed.xml
+docs/feed.csv

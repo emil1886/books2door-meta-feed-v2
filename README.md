@@ -2,11 +2,21 @@
 
 ## Feed URL
 
-    https://emil1886.github.io/books2door-meta-feed-v2/feed.xml
+    https://emil1886.github.io/books2door-meta-feed-v2/b2d-claude-feed.xml
 
-The original `books2door_meta_feed_v2.xml` is still published as a copy so the
-URL already given to Meta keeps working. Drop that step from the workflow once
-nothing points at it.
+Intended final URL, once DNS is in place:
+
+    https://feeds.anicca.co.uk/b2d-claude-feed.xml
+
+That needs a CNAME record for `feeds.anicca.co.uk` pointing at
+`emil1886.github.io`, then the custom domain set on this repo's Pages settings.
+Do NOT set the custom domain before the DNS record resolves - Pages redirects
+the github.io URL to the custom domain as soon as it is set, so the feed would
+be unreachable at both addresses until DNS caught up.
+
+`feed.xml` and `books2door_meta_feed_v2.xml` are still published as copies so
+URLs already handed out keep working. They are build-time copies only, kept out
+of git. Drop the ones nothing points at.
 
 
 A **derived** Meta catalogue feed for Books2Door. It does not touch Shopify.
