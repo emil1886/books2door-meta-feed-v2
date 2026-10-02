@@ -1,49 +1,87 @@
-# Anicca Meta feeds
+# Books2Door Meta feed v2 - clean titles
 
-Two client product feeds for Meta Commerce Manager, built daily and served from
-one GitHub Pages site. They share a repo because a Pages site allows only one
-deployment at a time - two repos deploying to one domain would race.
-
-## Feed URLs
-
-Intended final form, once DNS is in place:
-
-    https://feeds.anicca.co.uk/b2d-claude-feed.xml      Books2Door
-    https://feeds.anicca.co.uk/gt-claude-feed.xml       Golden Tours
-
-Working today:
+## Feed URL
 
     https://emil1886.github.io/books2door-meta-feed-v2/b2d-claude-feed.xml
-    https://emil1886.github.io/books2door-meta-feed-v2/gt-claude-feed.xml
 
-`feeds.anicca.co.uk` needs a CNAME record pointing at `emil1886.github.io`,
-after which the custom domain is set on this repo's Pages settings. Do NOT set
-the custom domain first - Pages redirects the github.io URL to the custom domain
-as soon as it is set, so the feeds would be unreachable at both addresses until
-DNS caught up.
+Intended final URL, once DNS is in place:
 
-Older filenames are still published as build-time copies so URLs already handed
-out keep working: `feed.xml`, `books2door_meta_feed_v2.xml` and
-`goldentours_meta_feed.xml`. Drop the ones nothing points at.
+    https://feeds.anicca.co.uk/b2d-claude-feed.xml
 
-## The two builds are independent
+That needs a CNAME record for `feeds.anicca.co.uk` pointing at
+`emil1886.github.io`, then the custom domain set on this repo's Pages settings.
+Do NOT set the custom domain before the DNS record resolves - Pages redirects
+the github.io URL to the custom domain as soon as it is set, so the feed would
+be unreachable at both addresses until DNS caught up.
 
-Either may fail without taking the other down. The canonical feed files are
-committed, so a failed build republishes yesterday's file unchanged - stale
-rather than empty, which is the safer failure for a live catalogue. The workflow
-refuses to deploy if either feed is missing or implausibly small.
+`feed.xml` and `books2door_meta_feed_v2.xml` are still published as copies so
+URLs already handed out keep working. They are build-time copies only, kept out
+of git. Drop the ones nothing points at.
 
-| | Books2Door | Golden Tours |
-|---|---|---|
-| source | the DataFeedWatch feed | crawls goldentours.com |
-| script | `build_feed.py` + `parse_titles.py` | `goldentours_meta_feed_gbp.py` |
-| job | rewrites titles | builds the whole feed, incl. images |
 
-The old `emil1886/goldentours-meta-feed` repo still builds and publishes its own
-URL, so nothing there breaks during the move. That means Golden Tours is crawled
-twice a day until you retire it - disable its workflow once Meta points here.
+A **derived** Meta catalogue feed for Books2Door. It does not touch Shopify.
 
-## Books2Door - what this feed changes
+    Shopify  ->  DataFeedWatch (shop 30774)  ->  [this repo]  ->  Meta catalogue
+                          ^ source of truth        ^ re-titles only
+
+## What it changes
+
+`g:title` becomes the **product name alone**. Everything the old title crammed in
+moves to structured fields:
+
+| Detail          | Goes to             |
+|-----------------|---------------------|
+| Author          | `custom_label_0`    |
+| Age             | `custom_label_1`    |
+| Binding         | `g:material`        |
+| Pack quantity   | `g:size`            |
+
+`g:material` carries exactly three values - **Paperback**, **Hardback**,
+**Board Book** - collapsed from the 15 binding spellings the source uses
+(Sprayed Edges Hardback, Leather Bound, Flexibound, Hardcover and so on, plus
+two misspellings, `Hardabck` and `Hardaback`). A mixed binding takes the first
+listed. Anything that is not a book gets no material rather than a wrong one.
+
+`g:size` carries the pack quantity as `3 Books`, `4 Books` and so on, on 2,849
+products. Every pack phrase the parser recognises states "book(s)", so the unit
+is always accurate. Singles simply have no size.
+
+Because binding moved out, **`g:product_type` is byte-identical to the
+DataFeedWatch value** (`Fiction`, `9-14`, `B2D DEALS`, ...). That crumb is not a
+single taxonomy: it mixes genre, age band and merchandising bucket, so a product
+is filed under one of the three, never consistently. Use `custom_label_1` for
+age-based product sets rather than product_type. The `>` hierarchy in
+product_type is free if sub-categories are ever wanted.
+
+Genre (Fiction / Non-Fiction) is deliberately dropped - it was judged
+unimportant for this feed, and 1,760 of the 1,861 genre-tagged items already
+stated it in their product_type crumb anyway.
+
+**Each field carries exactly one meaning.** On 2026-09-02 DataFeedWatch began
+populating `custom_label_0` with the site category - the slot this feed uses for
+the author. A leftover source value would make the label mean different things on
+different rows, so where we have no value of our own the field is removed.
+
+With pack quantity moved to `g:size`, `custom_label_4` is DataFeedWatch's again
+and passes straight through. Note its content is 97% unique per product (SKU
+ranges like `B2D8088-B2D8084`), so it is not usable for product sets.
+
+`custom_label_2` / `custom_label_3` are Books2Door promo tags and are passed
+through untouched. `id`, `price`, `sale_price`, `link`, `gtin`, `item_group_id`
+and all images are copied verbatim - this feed never invents commercial data.
+
+Example:
+
+    before  Alex Rider (Book 12-14) by Anthony Horowitz: 3 Books Collection Set - Ages 9-12 - Paperback
+    after   Alex Rider (Book 12-14)
+            custom_label_0=Anthony Horowitz  custom_label_1=Ages 9-12
+            material=Paperback   size=3 Books   product_type=Fiction
+
+No title may mention an age, Paperback, Hardback or a binding: those are stripped
+wherever they appear, not just at the end. Source titles are wildly inconsistent
+('Ages 0-5- Paperback', 'Backpack- Ages 1-7', 'Paperback (With A Free Audiobook)',
+'Fiction/Non Fiction'), so the parser finds each detail wherever it sits and
+excises it rather than peeling segments off the end.
 
 ## Categories are not this feed's job
 
