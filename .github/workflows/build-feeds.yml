@@ -1,0 +1,108 @@
+name: Build Anicca Meta feeds
+
+# Builds both client feeds and deploys ./docs to GitHub Pages in ONE deployment.
+# A Pages site allows only one deployment at a time, which is the whole reason
+# these live in one repo and one workflow rather than two.
+#
+# The two builds are deliberately independent: either may fail without taking
+# the other down. Because the canonical feed files are committed, a failed build
+# simply leaves yesterday's file in place and that is what gets published - the
+# feed goes stale rather than empty, which is always the safer failure.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'      # daily 06:00 UTC, after DataFeedWatch refreshes
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45          # Golden Tours crawls the site and builds ~1000 images
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 lxml pillow
+
+      # ---- Books2Door: transforms the DataFeedWatch feed, titles only ----
+      - name: Build Books2Door feed
+        id: b2d
+        continue-on-error: true
+        run: python build_feed.py --out-dir docs --basename b2d-claude-feed --min-products 3500
+
+      # ---- Golden Tours: crawls the live site in GBP, builds square images ----
+      # The strict-currency guard aborts rather than publish non-GBP prices.
+      - name: Build Golden Tours feed
+        id: gt
+        continue-on-error: true
+        run: |
+          python goldentours_meta_feed_gbp.py \
+            --currency GBP \
+            --strict-currency \
+            --min-products 300 \
+            --out-dir docs
+
+      # Older filenames stay published as copies so URLs already handed out keep
+      # working. Drop the ones nothing points at.
+      - name: Publish aliases and legacy filenames
+        run: |
+          for ext in xml csv; do
+            cp "docs/b2d-claude-feed.$ext" "docs/feed.$ext"
+            cp "docs/b2d-claude-feed.$ext" "docs/books2door_meta_feed_v2.$ext"
+            cp "docs/goldentours_meta_feed.$ext" "docs/gt-claude-feed.$ext"
+          done
+
+      # Never deploy a site with a missing or truncated feed on it.
+      - name: Check both feeds are publishable
+        run: |
+          fail=0
+          for f in docs/b2d-claude-feed.xml docs/goldentours_meta_feed.xml; do
+            if [ ! -s "$f" ]; then
+              echo "::error::$f is missing or empty"; fail=1; continue
+            fi
+            size=$(wc -c < "$f")
+            if [ "$size" -lt 100000 ]; then
+              echo "::error::$f is only $size bytes - refusing to publish"; fail=1
+            else
+              echo "$f ok ($size bytes)"
+            fi
+          done
+          echo "Books2Door build: ${{ steps.b2d.outcome }}"
+          echo "Golden Tours build: ${{ steps.gt.outcome }}"
+          if [ "${{ steps.b2d.outcome }}" != "success" ] || [ "${{ steps.gt.outcome }}" != "success" ]; then
+            echo "::warning::A build failed - that feed is being republished unchanged from the last good run"
+          fi
+          exit $fail
+
+      - name: Commit refreshed feeds
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs
+          git diff --staged --quiet && { echo "no change to commit"; exit 0; }
+          git commit -m "Refresh Anicca Meta feeds ($(date -u +%Y-%m-%d))"
+          git pull --rebase --strategy-option=ours origin main
+          git push
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

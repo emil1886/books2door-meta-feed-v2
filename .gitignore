@@ -5,3 +5,11 @@ docs/books2door_meta_feed_v2.xml
 docs/books2door_meta_feed_v2.csv
 docs/feed.xml
 docs/feed.csv
+
+# Golden Tours square images: regenerated and deployed via the Pages
+# artifact each run, so not committed (keeps the repo lean).
+docs/images/
+
+# Short aliases, created at build time from the canonical files.
+docs/gt-claude-feed.xml
+docs/gt-claude-feed.csv
