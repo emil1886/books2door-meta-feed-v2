@@ -6,6 +6,10 @@ This script re-titles each item so g:title is the product name alone, and
 puts author and age into custom labels, binding into g:material and pack
 quantity into g:size - the details the old titles crammed in.
 
+It also stamps the ISO currency onto price and sale_price. DataFeedWatch sends
+bare decimals, which Meta rejects as "missing the field currency" on every
+product. The prices are verified against the UK storefront, so GBP is correct.
+
 Categories are NOT this feed's job. Books2Door handles them upstream in
 DataFeedWatch via <internal_label>, which passes through untouched, so
 g:product_type is left exactly as the source sends it.
@@ -74,6 +78,25 @@ MATERIAL = {
 }
 
 
+def add_currency(item, tag, currency):
+    """Append the ISO currency to a price, e.g. '47.94' -> '47.94 GBP'.
+
+    DataFeedWatch sends bare decimals, which Meta reports as "missing the field
+    currency" on every product. Returns True if it changed the field. The value
+    itself is never touched - only the unit is stated - and a price that already
+    names a currency, or is not a plain number, is left alone.
+    """
+    raw = gtext(item, tag)
+    if not raw or re.search(r"[A-Za-z]", raw):
+        return False
+    try:
+        float(raw.replace(",", ""))
+    except ValueError:
+        return False                      # not a plain number: leave it be
+    gset(item, tag, f"{raw} {currency}")
+    return True
+
+
 def build_material(fmt):
     """Map a binding to one of Paperback / Hardback / Board Book, or '' if it is
     not a book. A mixed binding takes the first one listed, so 'Paperback/Hardback'
@@ -93,6 +116,9 @@ def main():
     ap.add_argument("--out-dir", default="docs")
     ap.add_argument("--basename", default="books2door_meta_feed_v2")
     ap.add_argument("--min-products", type=int, default=3500)
+    ap.add_argument("--currency", default="GBP",
+                    help="ISO 4217 code appended to price and sale_price. Meta "
+                         "requires the code, not the symbol, so GBP not £.")
     ap.add_argument("--review-csv", default="")
     args = ap.parse_args()
 
@@ -106,7 +132,7 @@ def main():
         sys.exit(f"ERROR: only {len(items)} items (min {args.min_products}) - refusing to publish")
 
     review, stats = [], {"author": 0, "format": 0, "age": 0, "genre": 0, "set": 0,
-                         "material": 0, "changed": 0}
+                         "material": 0, "priced": 0, "changed": 0}
     for item in items:
         orig_title = gtext(item, "title")
         p = parse_title(orig_title)
@@ -136,6 +162,12 @@ def main():
             stats["format"] += 1
         if p["genre"]:
             stats["genre"] += 1
+
+        # Meta reports every product as "missing the field currency" without this.
+        for tag in ("price", "sale_price"):
+            if add_currency(item, tag, args.currency):
+                if tag == "price":
+                    stats["priced"] += 1
 
         if new_title != orig_title:
             stats["changed"] += 1
@@ -170,7 +202,7 @@ def main():
     n = len(items)
     print(f"items            : {n}")
     print(f"titles rewritten : {stats['changed']} ({stats['changed']*100//n}%)")
-    for k in ("author", "age", "set", "material", "format", "genre"):
+    for k in ("author", "age", "set", "material", "priced", "format", "genre"):
         print(f"{k:17s}: {stats[k]} ({stats[k]*100//n}%)")
     print(f"wrote {xml_path}")
     print(f"wrote {csv_path}")

@@ -93,6 +93,25 @@ This feed used to build a category path in `product_type` from that same data.
 That work is removed as of 2026-09-16 - see the git history if it is ever needed
 again. Note `internal_label` is not namespaced, unlike most fields here.
 
+## Currency
+
+`price` and `sale_price` are stamped with the ISO code: `47.94 GBP`.
+
+DataFeedWatch sends bare decimals, and Meta rejects those as "missing the field
+currency" on every product - 4,165 of them. Meta wants the **code**, not the
+symbol, so this is `GBP` rather than `£`; they mean the same thing but a feed
+carrying `£47.94` is rejected.
+
+The numeric value is never altered, only the unit stated. Verified against the
+live UK storefront: feed prices match books2door.com exactly, so GBP is right
+and no conversion is involved. A price that already names a currency, or that is
+not a plain number, is left untouched.
+
+`rrp` and `perc_off` are DataFeedWatch's own non-standard fields which Meta
+ignores, so they are passed through as-is.
+
+Override with `--currency` if this is ever pointed at a non-UK catalogue.
+
 ## Run it
 
     python build_feed.py --out-dir docs --review-csv review_titles.csv
