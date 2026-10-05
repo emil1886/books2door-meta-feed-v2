@@ -6,9 +6,9 @@ This script re-titles each item so g:title is the product name alone, and
 puts author and age into custom labels, binding into g:material and pack
 quantity into g:size - the details the old titles crammed in.
 
-It also stamps the ISO currency onto price and sale_price. DataFeedWatch sends
-bare decimals, which Meta rejects as "missing the field currency" on every
-product. The prices are verified against the UK storefront, so GBP is correct.
+Prices pass through exactly as DataFeedWatch sends them. A --currency flag can
+stamp an ISO code on them, but it is off: the layer between this feed and Meta
+adds its own currency, so doing it here produced a doubled symbol.
 
 Categories are NOT this feed's job. Books2Door handles them upstream in
 DataFeedWatch via <internal_label>, which passes through untouched, so
@@ -116,9 +116,12 @@ def main():
     ap.add_argument("--out-dir", default="docs")
     ap.add_argument("--basename", default="books2door_meta_feed_v2")
     ap.add_argument("--min-products", type=int, default=3500)
-    ap.add_argument("--currency", default="GBP",
-                    help="ISO 4217 code appended to price and sale_price. Meta "
-                         "requires the code, not the symbol, so GBP not £.")
+    ap.add_argument("--currency", default="",
+                    help="ISO 4217 code to append to price and sale_price, e.g. GBP. "
+                         "OFF by default: the layer between this feed and Meta adds "
+                         "its own currency, and stamping one here showed up as a "
+                         "doubled symbol (2026-10-05). Only switch it on if Meta "
+                         "reports prices as missing the field currency.")
     ap.add_argument("--review-csv", default="")
     args = ap.parse_args()
 
@@ -163,10 +166,10 @@ def main():
         if p["genre"]:
             stats["genre"] += 1
 
-        # Meta reports every product as "missing the field currency" without this.
-        for tag in ("price", "sale_price"):
-            if add_currency(item, tag, args.currency):
-                if tag == "price":
+        # Off unless --currency is given; see the flag's help for why.
+        if args.currency:
+            for tag in ("price", "sale_price"):
+                if add_currency(item, tag, args.currency) and tag == "price":
                     stats["priced"] += 1
 
         if new_title != orig_title:

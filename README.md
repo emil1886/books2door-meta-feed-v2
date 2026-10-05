@@ -93,24 +93,24 @@ This feed used to build a category path in `product_type` from that same data.
 That work is removed as of 2026-09-16 - see the git history if it is ever needed
 again. Note `internal_label` is not namespaced, unlike most fields here.
 
-## Currency
+## Currency - deliberately NOT set here
 
-`price` and `sale_price` are stamped with the ISO code: `47.94 GBP`.
+`price` and `sale_price` pass through exactly as DataFeedWatch sends them, as
+bare decimals: `85.99`.
 
-DataFeedWatch sends bare decimals, and Meta rejects those as "missing the field
-currency" on every product - 4,165 of them. Meta wants the **code**, not the
-symbol, so this is `GBP` rather than `£`; they mean the same thing but a feed
-carrying `£47.94` is rejected.
+Meta did report all 4,165 products as "missing the field currency", and stamping
+`GBP` on them fixed that in the feed - but it then displayed as a doubled
+currency, because the layer between this feed and Meta adds its own. Reverted
+2026-10-05.
 
-The numeric value is never altered, only the unit stated. Verified against the
-live UK storefront: feed prices match books2door.com exactly, so GBP is right
-and no conversion is involved. A price that already names a currency, or that is
-not a plain number, is left untouched.
+The `--currency GBP` flag still exists and does the stamping if it is ever
+needed. Before switching it on, check whether the tool downstream is already
+adding one, or you get it twice. The feed was verified clean at the time: 4,156
+prices with `GBP`, zero with a `£`, none with both - the doubling was added
+after this feed, not in it.
 
-`rrp` and `perc_off` are DataFeedWatch's own non-standard fields which Meta
-ignores, so they are passed through as-is.
-
-Override with `--currency` if this is ever pointed at a non-UK catalogue.
+For reference, the prices are the UK ones: they were compared against the live
+books2door.com storefront and match exactly, so no conversion is involved.
 
 ## Run it
 
