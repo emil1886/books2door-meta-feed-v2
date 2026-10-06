@@ -2,7 +2,12 @@ name: Build Books2Door Meta feed v2
 
 on:
   schedule:
-    - cron: '0 6 * * *'      # daily 06:00 UTC, after DataFeedWatch refreshes
+    # Twice daily. GitHub defers scheduled runs under load - these were firing
+    # 5-8 hours late and 06 Oct missed entirely - so two attempts mean a deferred
+    # run is not a lost day. The evening slot also catches DataFeedWatch's late
+    # refreshes, which have landed as late as 18:23 UTC.
+    - cron: '0 6 * * *'
+    - cron: '0 20 * * *'
   workflow_dispatch:
 
 permissions:
@@ -35,12 +40,16 @@ jobs:
             cp "docs/b2d-claude-feed.$ext" "docs/books2door_meta_feed_v2.$ext"
           done
 
-      # Pages serves the artifact built above; this commit is a history snapshot.
-      # It costs ~1.3 MB compressed per run, which is fine once a day. If the
-      # schedule ever goes sub-daily, make this conditional again - hourly would
-      # add roughly 11 GB a year.
-      - name: Commit refreshed feed
+      # Pages serves the artifact built above; this commit is only a history
+      # snapshot, so one a day is plenty. At ~1.3 MB compressed per commit,
+      # committing on both runs would add ~0.9 GB a year, so the evening run
+      # rebuilds and republishes without committing.
+      - name: Commit refreshed feed (morning run only)
         run: |
+          if [ "$(date -u +%H)" -ge 12 ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "evening run - rebuilding and publishing only, no commit"
+            exit 0
+          fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs

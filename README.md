@@ -93,24 +93,35 @@ This feed used to build a category path in `product_type` from that same data.
 That work is removed as of 2026-09-16 - see the git history if it is ever needed
 again. Note `internal_label` is not namespaced, unlike most fields here.
 
-## Currency - deliberately NOT set here
+## Currency
 
-`price` and `sale_price` pass through exactly as DataFeedWatch sends them, as
-bare decimals: `85.99`.
+`price` and `sale_price` carry the ISO code: `85.99 GBP`.
 
-Meta did report all 4,165 products as "missing the field currency", and stamping
-`GBP` on them fixed that in the feed - but it then displayed as a doubled
-currency, because the layer between this feed and Meta adds its own. Reverted
-2026-10-05.
+DataFeedWatch sends bare decimals, and Meta rejects those as "missing the field
+currency" on every product. Meta wants the **code**, not the symbol, so this is
+`GBP` rather than `£`.
 
-The `--currency GBP` flag still exists and does the stamping if it is ever
-needed. Before switching it on, check whether the tool downstream is already
-adding one, or you get it twice. The feed was verified clean at the time: 4,156
-prices with `GBP`, zero with a `£`, none with both - the doubling was added
-after this feed, not in it.
+The numeric value is never altered, only the unit stated, and the catalogue total
+is unchanged. Verified against the live books2door.com storefront: feed prices
+match exactly, so GBP is right and no conversion is involved.
 
-For reference, the prices are the UK ones: they were compared against the live
-books2door.com storefront and match exactly, so no conversion is involved.
+This was briefly reverted on 2026-10-05 after a doubled `£` appeared. The feed
+was clean throughout - 4,156 prices with `GBP`, zero with a `£`, none with both -
+and the doubling turned out to come from another platform. Re-enabled 2026-10-06.
+`--currency` overrides, or set it empty to switch it off.
+
+## Schedule
+
+Two runs a day, 06:00 and 20:00 UTC.
+
+GitHub defers scheduled workflows under load - these were firing five to eight
+hours late and 06 October missed entirely, leaving the feed 15 hours behind the
+source. Two attempts mean a deferred run is not a lost day, and the evening slot
+also catches DataFeedWatch's late refreshes, which have landed as late as 18:23.
+
+Only the morning run commits. Pages serves the artifact built during the run, so
+the commit is just a history snapshot; at ~1.3 MB compressed, committing on both
+runs would add roughly 0.9 GB a year.
 
 ## Run it
 
