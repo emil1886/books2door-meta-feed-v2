@@ -129,6 +129,12 @@ runs would add roughly 0.9 GB a year.
 
 `--min-products 3500` aborts the build rather than publishing a truncated feed.
 
+When that guard trips, the build waits 30 minutes and tries again, up to four
+attempts over 90 minutes - DataFeedWatch serves a short feed mid-refresh (2,921
+items on 25 Nov) and it clears itself once the refresh completes. If all four
+fail the run errors and the previously published feed stays live, untouched.
+Tune with `ATTEMPTS` and `RETRY_WAIT_SECONDS` on that step.
+
 The GitHub Action rebuilds daily at 06:00 UTC and deploys `docs/` to Pages,
 committing the rebuilt feed to `main` as a history snapshot.
 

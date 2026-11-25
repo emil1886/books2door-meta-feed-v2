@@ -22,14 +22,42 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Four attempts half an hour apart is 90 minutes of waiting at worst. The
+    # job holds the 'pages' concurrency group while it waits, so a manual
+    # dispatch during a retry queues behind it rather than running alongside.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      # DataFeedWatch sometimes serves a truncated feed mid-refresh - 25 Nov it
+      # was down to 2,921 items - and build_feed.py refuses to publish below
+      # --min-products rather than mass-disabling products in Meta. That is the
+      # guard working, and it clears itself once the source finishes refreshing,
+      # so wait and try again rather than failing the day.
       - name: Build feed from DataFeedWatch source
-        run: python build_feed.py --out-dir docs --basename b2d-claude-feed --min-products 3500
+        env:
+          ATTEMPTS: '4'
+          RETRY_WAIT_SECONDS: '1800'
+        run: |
+          wait_min=$(( RETRY_WAIT_SECONDS / 60 ))
+          total_min=$(( (ATTEMPTS - 1) * RETRY_WAIT_SECONDS / 60 ))
+          attempt=1
+          while true; do
+            if python build_feed.py --out-dir docs --basename b2d-claude-feed --min-products 3500; then
+              echo "Built on attempt $attempt of $ATTEMPTS."
+              break
+            fi
+            if [ "$attempt" -ge "$ATTEMPTS" ]; then
+              echo "::error::Build failed on all $ATTEMPTS attempts over $total_min minutes. The DataFeedWatch source is most likely still short. The previously published feed is untouched and stays live."
+              exit 1
+            fi
+            echo "::warning::Attempt $attempt failed. Retrying in $wait_min minutes, $(( ATTEMPTS - attempt )) attempt(s) left."
+            sleep "$RETRY_WAIT_SECONDS"
+            attempt=$(( attempt + 1 ))
+          done
 
       # Older filenames stay published as copies so URLs already handed out keep
       # working. Drop the ones nothing points at.
