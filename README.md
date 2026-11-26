@@ -143,7 +143,22 @@ there.
 `--min-full-price 10` applies the correct version here instead, on `g:price`,
 if that upstream fix is ever impractical. It is off by default.
 
-`--min-products 3500` aborts the build rather than publishing a truncated feed.
+**The build refuses to publish a sudden drop in product count.** Two guards,
+both on the published count rather than the source:
+
+- `--max-shrink` (default 0.15) compares against the last feed published, read
+  from `docs/`. More than a 15% fall and the build refuses. This is the guard
+  that matters, and it re-baselines itself, so it needs no retuning when the
+  catalogue grows, shrinks or a filter changes.
+- `--min-products` (default 1000) is only an absolute backstop for a
+  catastrophically empty feed.
+
+When a drop is intended - a new filter, say - the error names the exact flag to
+re-run with once to accept it and re-baseline.
+
+The absolute floor used to be the only guard, sized near the real catalogue at
+3,500. On 2026-11-25 an upstream filter removed a quarter of the products and
+every run failed, which is why the sizing moved to a relative check.
 
 When that guard trips, the build waits 30 minutes and tries again, up to four
 attempts over 90 minutes - DataFeedWatch serves a short feed mid-refresh (2,921

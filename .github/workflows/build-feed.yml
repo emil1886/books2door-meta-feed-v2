@@ -32,11 +32,13 @@ jobs:
         with:
           python-version: '3.12'
 
-      # DataFeedWatch sometimes serves a truncated feed mid-refresh - 25 Nov it
-      # was down to 2,921 items - and build_feed.py refuses to publish below
-      # --min-products rather than mass-disabling products in Meta. That is the
-      # guard working, and it clears itself once the source finishes refreshing,
-      # so wait and try again rather than failing the day.
+      # DataFeedWatch sometimes serves a truncated feed mid-refresh, and
+      # build_feed.py refuses to publish a sudden drop rather than mass-disabling
+      # products in Meta. That is the guard working, and it clears itself once the
+      # source finishes refreshing, so wait and try again rather than failing the
+      # day. Thresholds live in build_feed.py (--max-shrink, --min-products) and
+      # are deliberately not repeated here: a floor duplicated in two places is
+      # how the 25 Nov breakage went unnoticed.
       - name: Build feed from DataFeedWatch source
         env:
           ATTEMPTS: '4'
@@ -46,7 +48,7 @@ jobs:
           total_min=$(( (ATTEMPTS - 1) * RETRY_WAIT_SECONDS / 60 ))
           attempt=1
           while true; do
-            if python build_feed.py --out-dir docs --basename b2d-claude-feed --min-products 2500; then
+            if python build_feed.py --out-dir docs --basename b2d-claude-feed; then
               echo "Built on attempt $attempt of $ATTEMPTS."
               break
             fi

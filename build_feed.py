@@ -98,6 +98,22 @@ def add_currency(item, tag, currency):
     return True
 
 
+def published_count(path):
+    """Item count of the feed we last published, or 0 if there isn't one.
+
+    The repository commits docs/ each morning, so checkout gives the build the
+    previous feed to compare against. A missing or unreadable file means no
+    baseline, and the relative guard simply does not apply.
+    """
+    if not os.path.exists(path):
+        return 0
+    try:
+        channel = ET.parse(path).getroot().find("channel")
+        return len(channel.findall("item")) if channel is not None else 0
+    except ET.ParseError:
+        return 0
+
+
 def price_value(raw):
     """Numeric value of a price field, tolerating a currency suffix or commas."""
     m = re.match(r"\s*([0-9][0-9,]*(?:\.[0-9]+)?)", raw or "")
@@ -150,11 +166,16 @@ def main():
     ap.add_argument("--source", default=SOURCE_URL)
     ap.add_argument("--out-dir", default="docs")
     ap.add_argument("--basename", default="books2door_meta_feed_v2")
-    ap.add_argument("--min-products", type=int, default=2500,
-                    help="Floor on the PUBLISHED count, checked after the price "
-                         "filter. Lowered from 3500 on 2026-11-25: a filter now "
-                         "removes sub-floor products, so the old value failed "
-                         "every run.")
+    ap.add_argument("--min-products", type=int, default=1000,
+                    help="Absolute backstop on the PUBLISHED count. Deliberately "
+                         "low - it only catches a catastrophically empty feed. "
+                         "Sizing it near the real catalogue is what broke on "
+                         "2026-11-25, so --max-shrink is the real guard.")
+    ap.add_argument("--max-shrink", type=float, default=0.15,
+                    help="Refuse to publish if the count drops more than this "
+                         "fraction below the last published feed (0.15 = 15%%). "
+                         "Self-calibrating, so it needs no retuning when the "
+                         "catalogue or a filter changes. 0 disables.")
     ap.add_argument("--min-full-price", type=float, default=0.0,
                     help="Drop products whose full price (g:price) is under this. "
                          "OFF by default: the price filter belongs upstream in "
@@ -179,13 +200,37 @@ def main():
     cheap = drop_cheap(channel, args.min_full_price)
     items = channel.findall("item")
 
-    # The guard checks what we are about to PUBLISH, so an over-eager price
-    # filter cannot quietly ship a thin catalogue either.
+    # Two guards, both on what we are about to PUBLISH rather than on the source,
+    # so an over-eager filter cannot quietly ship a thin catalogue either.
+    context = (f"{len(items)} to publish, {source_count} from source"
+               + (f", {cheap} under £{args.min_full_price:g} full price" if cheap else ""))
+
+    # 1. Absolute backstop. Deliberately low - it only catches a catastrophically
+    #    empty feed. Sizing it near the real catalogue is what broke on 25 Nov:
+    #    a floor of 3,500 set when the catalogue was ~4,200 failed every run once
+    #    a filter removed a quarter of it.
     if len(items) < args.min_products:
-        sys.exit(f"ERROR: only {len(items)} items to publish "
-                 f"({source_count} from source, {cheap} under "
-                 f"£{args.min_full_price:g} full price) - "
-                 f"min {args.min_products} - refusing to publish")
+        sys.exit(f"ERROR: {context} - below the absolute floor of "
+                 f"{args.min_products} - refusing to publish")
+
+    # 2. Relative guard, which is the one that actually earns its keep. It
+    #    compares against the last feed we published, so it re-baselines itself
+    #    and needs no retuning when the catalogue or a filter changes. A genuine
+    #    mid-refresh truncation shows up as a sudden drop at any absolute size.
+    previous = published_count(os.path.join(args.out_dir, args.basename + ".xml"))
+    if previous and args.max_shrink > 0:
+        allowed = previous * (1 - args.max_shrink)
+        if len(items) < allowed:
+            drop_pct = (1 - len(items) / previous) * 100
+            sys.exit(
+                f"ERROR: {context} - that is {drop_pct:.0f}% fewer than the "
+                f"{previous} last published, over the {args.max_shrink * 100:.0f}% "
+                f"limit. Refusing to publish.\n"
+                f"       If this drop is intended (a new filter, say), re-run once "
+                f"with --max-shrink {min(0.95, drop_pct / 100 + 0.05):.2f} to accept "
+                f"it and re-baseline.")
+        print(f"shrink check     : {len(items)} vs {previous} last published "
+              f"({(len(items) / previous - 1) * 100:+.1f}%)")
 
     review, stats = [], {"author": 0, "format": 0, "age": 0, "genre": 0, "set": 0,
                          "material": 0, "priced": 0, "changed": 0}
