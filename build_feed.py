@@ -98,6 +98,40 @@ def add_currency(item, tag, currency):
     return True
 
 
+def price_value(raw):
+    """Numeric value of a price field, tolerating a currency suffix or commas."""
+    m = re.match(r"\s*([0-9][0-9,]*(?:\.[0-9]+)?)", raw or "")
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def drop_cheap(channel, floor):
+    """Remove products whose FULL price is under the floor. Returns the count.
+
+    This has to read g:price, not rrp. DataFeedWatch's rrp field tracks
+    sale_price rather than the recommended retail price - they were equal on
+    3,972 of 3,974 products on 2026-11-24, while rrp matched price on only 13 -
+    so filtering on rrp drops heavily discounted books whose real RRP is well
+    over the floor. On that day's data an rrp floor removed 1,090 products where
+    a full-price floor removes 367, so 723 were being excluded wrongly.
+
+    A product with a missing or unparseable price is kept, not silently dropped.
+    """
+    if not floor or floor <= 0:
+        return 0
+    removed = 0
+    for item in list(channel.findall("item")):
+        value = price_value(gtext(item, "price"))
+        if value is not None and value < floor:
+            channel.remove(item)
+            removed += 1
+    return removed
+
+
 def build_material(fmt):
     """Map a binding to one of Paperback / Hardback / Board Book, or '' if it is
     not a book. A mixed binding takes the first one listed, so 'Paperback/Hardback'
@@ -116,7 +150,15 @@ def main():
     ap.add_argument("--source", default=SOURCE_URL)
     ap.add_argument("--out-dir", default="docs")
     ap.add_argument("--basename", default="books2door_meta_feed_v2")
-    ap.add_argument("--min-products", type=int, default=3500)
+    ap.add_argument("--min-products", type=int, default=2500,
+                    help="Floor on the PUBLISHED count, checked after the price "
+                         "filter. Lowered from 3500 on 2026-11-25: a filter now "
+                         "removes sub-floor products, so the old value failed "
+                         "every run.")
+    ap.add_argument("--min-full-price", type=float, default=10.0,
+                    help="Drop products whose full price (g:price) is under this. "
+                         "0 disables. Deliberately NOT rrp, which in this source "
+                         "holds the sale price.")
     ap.add_argument("--currency", default="GBP",
                     help="ISO 4217 code appended to price and sale_price. Meta wants "
                          "the code, not the symbol, so GBP rather than £. Briefly "
@@ -130,9 +172,17 @@ def main():
     channel = root.find("channel")
     if channel is None:
         sys.exit("ERROR: no <channel> in source feed")
+    source_count = len(channel.findall("item"))
+    cheap = drop_cheap(channel, args.min_full_price)
     items = channel.findall("item")
+
+    # The guard checks what we are about to PUBLISH, so an over-eager price
+    # filter cannot quietly ship a thin catalogue either.
     if len(items) < args.min_products:
-        sys.exit(f"ERROR: only {len(items)} items (min {args.min_products}) - refusing to publish")
+        sys.exit(f"ERROR: only {len(items)} items to publish "
+                 f"({source_count} from source, {cheap} under "
+                 f"£{args.min_full_price:g} full price) - "
+                 f"min {args.min_products} - refusing to publish")
 
     review, stats = [], {"author": 0, "format": 0, "age": 0, "genre": 0, "set": 0,
                          "material": 0, "priced": 0, "changed": 0}
@@ -203,7 +253,9 @@ def main():
             w.writeheader(); w.writerows(review)
 
     n = len(items)
-    print(f"items            : {n}")
+    print(f"source items     : {source_count}")
+    print(f"dropped <£{args.min_full_price:g} full price : {cheap}")
+    print(f"published items  : {n}")
     print(f"titles rewritten : {stats['changed']} ({stats['changed']*100//n}%)")
     for k in ("author", "age", "set", "material", "priced", "format", "genre"):
         print(f"{k:17s}: {stats[k]} ({stats[k]*100//n}%)")

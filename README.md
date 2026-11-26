@@ -127,6 +127,20 @@ runs would add roughly 0.9 GB a year.
 
     python build_feed.py --out-dir docs --review-csv review_titles.csv
 
+**Products under a £10 full price are dropped** (`--min-full-price`, default 10).
+The filter reads `g:price`, deliberately NOT `rrp`: DataFeedWatch's `rrp` field
+tracks `sale_price` rather than the recommended retail price - equal on 3,972 of
+3,974 products on 2026-11-24, while `rrp` matched `price` on only 13. Filtering
+on `rrp` therefore drops heavily discounted books whose real RRP is well over
+£10: on that day's data it removed 1,090 products where a full-price floor
+removes 367, so 723 were excluded wrongly. A product with a missing or
+unparseable price is kept, never silently dropped.
+
+NOTE: an equivalent filter also exists upstream in DataFeedWatch, applied to
+`rrp`. While that is in place this feed's own filter is a no-op, because the
+sub-£10 products never reach it. Remove the DataFeedWatch filter so this one
+governs, or repoint it at the full price there.
+
 `--min-products 3500` aborts the build rather than publishing a truncated feed.
 
 When that guard trips, the build waits 30 minutes and tries again, up to four
