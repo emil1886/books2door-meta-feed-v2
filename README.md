@@ -127,19 +127,21 @@ runs would add roughly 0.9 GB a year.
 
     python build_feed.py --out-dir docs --review-csv review_titles.csv
 
-**Products under a £10 full price are dropped** (`--min-full-price`, default 10).
-The filter reads `g:price`, deliberately NOT `rrp`: DataFeedWatch's `rrp` field
-tracks `sale_price` rather than the recommended retail price - equal on 3,972 of
-3,974 products on 2026-11-24, while `rrp` matched `price` on only 13. Filtering
-on `rrp` therefore drops heavily discounted books whose real RRP is well over
-£10: on that day's data it removed 1,090 products where a full-price floor
-removes 367, so 723 were excluded wrongly. A product with a missing or
-unparseable price is kept, never silently dropped.
+**The sub-£10 price filter lives upstream in DataFeedWatch, not here.** This
+feed does not duplicate it.
 
-NOTE: an equivalent filter also exists upstream in DataFeedWatch, applied to
-`rrp`. While that is in place this feed's own filter is a no-op, because the
-sub-£10 products never reach it. Remove the DataFeedWatch filter so this one
-governs, or repoint it at the full price there.
+It is worth knowing what that upstream filter reads, though. DataFeedWatch
+applies it to `rrp`, and `rrp` in this source holds the **sale price**, not the
+recommended retail price - equal to `sale_price` on 3,972 of 3,974 products on
+2026-11-24, equal to `price` on only 13. So it drops heavily discounted books
+whose real RRP is well over £10: on that day's data it removed 1,090 products
+where a full-price floor removes 367, excluding 723 wrongly (*RHS Gardening
+Through the Year*, full £20.00, on sale at £7.99). Fixing that means repointing
+the filter at the full price in DataFeedWatch, or correcting the `rrp` mapping
+there.
+
+`--min-full-price 10` applies the correct version here instead, on `g:price`,
+if that upstream fix is ever impractical. It is off by default.
 
 `--min-products 3500` aborts the build rather than publishing a truncated feed.
 

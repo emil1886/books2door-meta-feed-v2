@@ -155,10 +155,13 @@ def main():
                          "filter. Lowered from 3500 on 2026-11-25: a filter now "
                          "removes sub-floor products, so the old value failed "
                          "every run.")
-    ap.add_argument("--min-full-price", type=float, default=10.0,
+    ap.add_argument("--min-full-price", type=float, default=0.0,
                     help="Drop products whose full price (g:price) is under this. "
-                         "0 disables. Deliberately NOT rrp, which in this source "
-                         "holds the sale price.")
+                         "OFF by default: the price filter belongs upstream in "
+                         "DataFeedWatch, which already applies one, and this feed "
+                         "does not duplicate it. Kept available because DFW's "
+                         "filter reads rrp, which here holds the SALE price - set "
+                         "this to 10 to filter on the true full price instead.")
     ap.add_argument("--currency", default="GBP",
                     help="ISO 4217 code appended to price and sale_price. Meta wants "
                          "the code, not the symbol, so GBP rather than £. Briefly "
